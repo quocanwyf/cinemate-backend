@@ -1,15 +1,201 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// This is your Prisma schema file for the CineMate project.
+// It serves as the single source of truth for your database schema.
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+//        GROUP 1: AUTHENTICATION & USERS 
+model User {
+  id                String   @id @default(uuid())
+  email             String?  @unique
+  password_hash     String?
+  display_name      String
+  avatar_url        String?
+  provider          String   @default("local")
+  provider_id       String?  @unique
+  is_active         Boolean  @default(true)
+  is_email_verified Boolean  @default(false)
+  created_at        DateTime @default(now())
+  updated_at        DateTime @updatedAt
+
+  // Relations
+  userRefreshTokens   UserRefreshToken[]
+  passwordResetTokens PasswordResetToken[]
+  watchlists          Watchlist[]
+  ratings             Rating[]
+  comments            Comment[]
+}
+
+model Admin {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  password_hash String
+  full_name     String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  // Relations
+  adminRefreshTokens   AdminRefreshToken[]
+  createdFeaturedLists FeaturedList[]
+}
+
+model UserRefreshToken {
+  id         String   @id @default(uuid())
+  token_hash String   @unique
+  expires_at DateTime
+
+  // Relation to User
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+}
+
+model AdminRefreshToken {
+  id         String   @id @default(uuid())
+  token_hash String   @unique
+  expires_at DateTime
+
+  // Relation to Admin
+  admin   Admin  @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  adminId String
+}
+
+model PasswordResetToken {
+  id         String   @id @default(uuid())
+  token_hash String   @unique
+  expires_at DateTime
+
+  // Relation to User
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+}
+
+//        GROUP 2: MOVIES & INTERACTIONS 
+model Movie {
+  id           Int       @id // ID from TMDB
+  title        String
+  overview     String?   @db.Text
+  poster_path  String?
+  release_date DateTime?
+  popularity   Float?
+  vote_average Float?
+  vote_count   Int?
+  cached_at    DateTime  @default(now())
+
+  // Relations
+  genres          MovieGenre[]
+  watchlists      Watchlist[]
+  ratings         Rating[]
+  comments        Comment[]
+  inFeaturedLists FeaturedListMovie[]
+
+  @@index([title])
+}
+
+model Genre {
+  id   Int    @id // ID from TMDB
+  name String @unique
+
+  // Relations
+  movies MovieGenre[]
+}
+
+model MovieGenre {
+  // Relation to Movie
+  movie   Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  movieId Int
+
+  // Relation to Genre
+  genre   Genre @relation(fields: [genreId], references: [id], onDelete: Cascade)
+  genreId Int
+
+  @@id([movieId, genreId])
+}
+
+model Watchlist {
+  created_at DateTime @default(now())
+
+  // Relation to User
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  // Relation to Movie
+  movie   Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  movieId Int
+
+  @@id([userId, movieId])
+}
+
+model Rating {
+  score      Int
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // Relation to User
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  // Relation to Movie
+  movie   Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  movieId Int
+
+  @@id([userId, movieId])
+}
+
+model Comment {
+  id         String   @id @default(uuid())
+  content    String   @db.Text
+  is_deleted Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relation to User
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  // Relation to Movie
+  movie   Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  movieId Int
+
+  // Self-relation for replies
+  parent          Comment?  @relation("Replies", fields: [parentCommentId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  parentCommentId String?
+  replies         Comment[] @relation("Replies")
+
+  @@index([movieId])
+  @@index([userId])
+}
+
+//        GROUP 3: ADMIN & CONTENT CURATION 
+model FeaturedList {
+  id           String   @id @default(uuid())
+  title        String
+  description  String?  @db.Text
+  is_published Boolean  @default(false)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  // Relations
+  owner   Admin               @relation(fields: [ownerId], references: [id])
+  ownerId String
+  movies  FeaturedListMovie[]
+}
+
+model FeaturedListMovie {
+  display_order Int @default(0)
+
+  // Relation to FeaturedList
+  list   FeaturedList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  listId String
+
+  // Relation to Movie
+  movie   Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  movieId Int
+
+  @@id([listId, movieId])
 }
