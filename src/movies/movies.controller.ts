@@ -15,8 +15,8 @@ export class MoviesController {
     type: [MovieDto], // Chỉ định rằng API trả về một mảng các MovieDto
   })
   getPopularMovies() {
-    // Tạm thời chưa cần code logic
-    return [];
+    // Gọi đến service để lấy dữ liệu
+    return this.moviesService.getPopularMovies();
   }
 
   @Get('top-rated')
