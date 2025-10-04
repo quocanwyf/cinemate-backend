@@ -39,24 +39,24 @@ export class MoviesService {
   // Hàm chạy nền để cập nhật dữ liệu
   private async enrichMoviesData(movieIds: number[]): Promise<void> {
     this.logger.log(
-      `Starting data enrichment for ${movieIds.length} movies...`,
+      `Starting data validation & enrichment for ${movieIds.length} movies...`,
     );
+
     for (const movieId of movieIds) {
       try {
-        // Kiểm tra xem phim đã có đủ dữ liệu chưa
         const movieInDb = await this.prisma.movie.findUnique({
           where: { id: movieId },
           select: { poster_path: true, overview: true },
         });
 
-        // Nếu chưa có poster hoặc overview, thì mới gọi API
+        // Chỉ gọi API nếu phim còn thiếu dữ liệu
         if (!movieInDb || !movieInDb.poster_path || !movieInDb.overview) {
           this.logger.log(`Fetching details for movie ID: ${movieId}`);
           const url = `https://api.themoviedb.org/3/movie/${movieId}?api_key=${this.tmdbApiKey}`;
+
           const response = await firstValueFrom(this.httpService.get(url));
           const movieDetails = response.data;
 
-          // Cập nhật lại bản ghi trong DB
           await this.prisma.movie.update({
             where: { id: movieId },
             data: {
@@ -65,13 +65,41 @@ export class MoviesService {
               popularity: movieDetails.popularity,
               vote_average: movieDetails.vote_average,
               vote_count: movieDetails.vote_count,
+              // Có thể cập nhật thêm các trường khác nếu muốn
+              title: movieDetails.title,
+              release_date: movieDetails.release_date
+                ? new Date(movieDetails.release_date)
+                : null,
             },
           });
         }
       } catch (error) {
-        this.logger.error(
-          `Failed to fetch or update movie ID ${movieId}: ${error.message}`,
-        );
+        // Xử lý lỗi một cách cụ thể hơn
+        if (error.response && error.response.status === 404) {
+          // Nếu lỗi là 404, có nghĩa là phim này không tồn tại trên TMDB
+          this.logger.warn(
+            `Movie ID ${movieId} not found on TMDB. Deleting from local DB.`,
+          );
+
+          // Xóa các bản ghi phụ thuộc trước
+          await this.prisma.movieGenre.deleteMany({
+            where: { movieId: movieId },
+          });
+          await this.prisma.watchlist.deleteMany({
+            where: { movieId: movieId },
+          });
+          await this.prisma.rating.deleteMany({ where: { movieId: movieId } });
+          await this.prisma.comment.deleteMany({ where: { movieId: movieId } });
+          // ... (thêm các bảng phụ thuộc khác nếu có)
+
+          // Sau đó xóa bản ghi phim gốc
+          await this.prisma.movie.delete({ where: { id: movieId } });
+        } else {
+          // Đối với các lỗi khác (lỗi mạng, hết rate limit...), chỉ ghi log
+          this.logger.error(
+            `Failed to fetch/update movie ID ${movieId}: ${error.message}`,
+          );
+        }
       }
     }
     this.logger.log('Data enrichment process finished.');
