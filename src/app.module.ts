@@ -10,6 +10,7 @@ import { RatingsModule } from './ratings/ratings.module';
 import { CommentsModule } from './comments/comments.module';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { APP_GUARD } from '@nestjs/core';
     WatchlistModule,
     RatingsModule,
     CommentsModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [
