@@ -45,5 +45,28 @@ export class RatingsService {
     return rating;
   }
 
+  async deleteRating(userId: string, movieId: number) {
+    try {
+      await this.prisma.rating.delete({
+        where: {
+          userId_movieId: {
+            userId: userId,
+            movieId: movieId,
+          },
+        },
+      });
+      return { message: 'Rating deleted successfully' };
+    } catch (error) {
+      // Bắt lỗi nếu người dùng cố xóa một rating không tồn tại
+      if (error.code === 'P2025') {
+        // Mã lỗi của Prisma khi không tìm thấy bản ghi để xóa
+        throw new NotFoundException(
+          `Rating for movie ID ${movieId} not found.`,
+        );
+      }
+      throw error;
+    }
+  }
+
   // (Có thể thêm các hàm khác sau này, ví dụ: lấy rating của một user cho một phim)
 }

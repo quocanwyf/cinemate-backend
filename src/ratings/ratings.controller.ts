@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
   Controller,
   Post,
@@ -8,6 +10,7 @@ import {
   Request,
   HttpCode,
   HttpStatus,
+  Delete,
 } from '@nestjs/common';
 import { RatingsService } from './ratings.service';
 import { AuthGuard } from '@nestjs/passport';
@@ -40,5 +43,18 @@ export class RatingsController {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-assignment
     const userId = req.user.id;
     return this.ratingsService.upsertRating(userId, movieId, createRatingDto);
+  }
+
+  @Delete(':movieId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a rating for a movie' })
+  @ApiResponse({ status: 200, description: 'Rating deleted.' })
+  @ApiResponse({ status: 404, description: 'Rating not found.' })
+  deleteRating(
+    @Request() req,
+    @Param('movieId', ParseIntPipe) movieId: number,
+  ) {
+    const userId = req.user.id;
+    return this.ratingsService.deleteRating(userId, movieId);
   }
 }
