@@ -4,6 +4,6 @@ import { WatchlistService } from './watchlist.service';
 
 @Module({
   controllers: [WatchlistController],
-  providers: [WatchlistService]
+  providers: [WatchlistService],
 })
 export class WatchlistModule {}
