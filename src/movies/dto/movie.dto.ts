@@ -10,6 +10,6 @@ export class MovieDto {
   @ApiProperty({ example: '/hac2Lq6hD2Hh1M32w02p8V3YcFl.jpg' })
   poster_path: string;
 
-  @ApiProperty({ example: 7.8 })
+  @ApiProperty({ example: 4.3 })
   vote_average: number;
 }
