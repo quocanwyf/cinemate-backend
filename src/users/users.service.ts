@@ -1,12 +1,17 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import * as bcrypt from 'bcrypt';
+import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private cloudinaryService: CloudinaryService,
+  ) {}
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
     const updatedUser = await this.prisma.user.update({
@@ -61,5 +66,18 @@ export class UsersService {
     });
 
     return { message: 'Password changed successfully' };
+  }
+
+  async updateAvatar(userId: string, file: Express.Multer.File) {
+    const uploadResult = await this.cloudinaryService.uploadImage(file);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        avatar_url: uploadResult.secure_url,
+      },
+    });
+
+    return { avatar_url: uploadResult.secure_url };
   }
 }
