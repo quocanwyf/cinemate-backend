@@ -7,6 +7,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { WatchlistModule } from './watchlist/watchlist.module';
 import { RatingsModule } from './ratings/ratings.module';
+import { CommentsModule } from './comments/comments.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { RatingsModule } from './ratings/ratings.module';
     AuthModule,
     WatchlistModule,
     RatingsModule,
+    CommentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -4,7 +4,7 @@ import { IsEmail, IsString, MinLength } from 'class-validator';
 export class LoginDto {
   @ApiProperty({
     description: 'User email address',
-    example: 'john.doe@example.com',
+    example: 'usertest@cinemate.app',
     format: 'email',
   })
   @IsEmail({}, { message: 'Please provide a valid email address' })
