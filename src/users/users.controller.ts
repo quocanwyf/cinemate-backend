@@ -84,7 +84,6 @@ export class UsersController {
   updateAvatar(@Request() req, @UploadedFile() file: Express.Multer.File) {
     const userId = req.user.id;
     if (!file) {
-      // Thêm một bước kiểm tra để đảm bảo file đã được gửi lên
       throw new BadRequestException('Avatar file is required.');
     }
     return this.usersService.updateAvatar(userId, file);

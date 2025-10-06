@@ -1,11 +1,17 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 // src/comments/comments.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
+import { UpdateCommentDto } from './dto/update-comment.dto';
 
 @Injectable()
 export class CommentsService {
@@ -15,7 +21,7 @@ export class CommentsService {
   async getCommentsByMovie(movieId: number) {
     // Lấy tất cả bình luận của phim
     const comments = await this.prisma.comment.findMany({
-      where: { movieId: movieId, is_deleted: false }, // Chỉ lấy comment chưa bị xóa
+      where: { movieId: movieId }, // Chỉ lấy comment chưa bị xóa
       include: {
         // Lấy thông tin người đăng
         user: {
@@ -36,14 +42,28 @@ export class CommentsService {
     const rootComments: any[] = [];
 
     comments.forEach((comment) => {
-      commentMap.set(comment.id, { ...comment, replies: [] });
+      // Nếu comment đã bị xóa, chúng ta chỉ giữ lại những thông tin cần thiết
+      // để duy trì cấu trúc cây
+      if (comment.is_deleted) {
+        commentMap.set(comment.id, {
+          id: comment.id,
+          content: comment.content,
+          is_deleted: true,
+          parentCommentId: comment.parentCommentId,
+          replies: [],
+          // Các trường khác sẽ là undefined
+        });
+      } else {
+        commentMap.set(comment.id, { ...comment, replies: [] });
+      }
     });
 
     comments.forEach((comment) => {
       if (comment.parentCommentId && commentMap.has(comment.parentCommentId)) {
-        commentMap
-          .get(comment.parentCommentId)
-          .replies.push(commentMap.get(comment.id));
+        const parentInMap = commentMap.get(comment.parentCommentId);
+        if (parentInMap) {
+          parentInMap.replies.push(commentMap.get(comment.id));
+        }
       } else {
         rootComments.push(commentMap.get(comment.id));
       }
@@ -100,5 +120,54 @@ export class CommentsService {
     });
 
     return newComment;
+  }
+
+  async updateComment(
+    userId: string,
+    commentId: string,
+    dto: UpdateCommentDto,
+  ) {
+    const comment = await this.prisma.comment.findUnique({
+      where: { id: commentId },
+    });
+
+    if (!comment) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    if (comment.userId !== userId) {
+      throw new ForbiddenException('You are not allowed to edit this comment');
+    }
+
+    return this.prisma.comment.update({
+      where: { id: commentId },
+      data: { content: dto.content },
+    });
+  }
+
+  async deleteComment(userId: string, commentId: string) {
+    const comment = await this.prisma.comment.findUnique({
+      where: { id: commentId },
+    });
+
+    if (!comment) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    if (comment.userId !== userId) {
+      throw new ForbiddenException(
+        'You are not allowed to delete this comment',
+      );
+    }
+
+    await this.prisma.comment.update({
+      where: { id: commentId },
+      data: {
+        is_deleted: true,
+        content: '[This comment has been deleted]', // Thay thế nội dung
+      },
+    });
+
+    return { message: 'Comment deleted successfully' };
   }
 }
