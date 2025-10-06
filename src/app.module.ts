@@ -8,10 +8,18 @@ import { AuthModule } from './auth/auth.module';
 import { WatchlistModule } from './watchlist/watchlist.module';
 import { RatingsModule } from './ratings/ratings.module';
 import { CommentsModule } from './comments/comments.module';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 60 giây
+        limit: 10, // Tối đa 10 request trong 60 giây
+      },
+    ]),
     MoviesModule,
     PrismaModule,
     AuthModule,
@@ -20,6 +28,12 @@ import { CommentsModule } from './comments/comments.module';
     CommentsModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}
