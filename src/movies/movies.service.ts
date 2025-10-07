@@ -31,7 +31,7 @@ export class MoviesService {
 
   async getPopularMovies() {
     const movies = await this.prisma.movie.findMany({
-      orderBy: { popularity: 'desc' },
+      orderBy: { popularity: 'asc' },
       where: { popularity: { not: null } },
       take: 20,
     });
@@ -135,6 +135,8 @@ export class MoviesService {
   //                        PRIVATE HELPER METHODS
   // =================================================================
 
+  delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
   private normalizeMoviesForList(movies: Movie[]) {
     return movies.map((movie) => ({
       id: movie.id,
@@ -149,14 +151,32 @@ export class MoviesService {
     if (moviesToEnrich.length === 0) {
       return movies;
     }
-    this.logger.log(`Enriching data for ${moviesToEnrich.length} movies...`);
-    const enrichmentPromises = moviesToEnrich.map((movie) =>
-      this.fetchAndUpdateMovie(movie.id).catch((err) => {
-        this.logger.error(`Error enriching movie ${movie.id}: ${err.message}`);
-        return null;
-      }),
+    this.logger.log(
+      `Queueing ${moviesToEnrich.length} movies for data enrichment...`,
     );
-    await Promise.all(enrichmentPromises);
+    const chunkSize = 10; // Xử lý 10 phim mỗi lần
+    for (let i = 0; i < moviesToEnrich.length; i += chunkSize) {
+      const chunk = moviesToEnrich.slice(i, i + chunkSize);
+      this.logger.log(
+        `Processing chunk ${i / chunkSize + 1}/${Math.ceil(moviesToEnrich.length / chunkSize)}...`,
+      );
+
+      const enrichmentPromises = chunk.map((movie) =>
+        this.fetchAndUpdateMovie(movie.id).catch((err) => {
+          this.logger.error(
+            `Error in chunk processing for movie ${movie.id}: ${err.message}`,
+          );
+          return null;
+        }),
+      );
+
+      await Promise.all(enrichmentPromises);
+
+      // Thêm một khoảng nghỉ 500ms giữa mỗi chùm để tránh spam API
+      if (i + chunkSize < moviesToEnrich.length) {
+        await this.delay(500);
+      }
+    }
     this.logger.log('Enrichment complete. Refetching data from DB...');
     const movieIds = movies.map((m) => m.id);
     const freshMovies = await this.prisma.movie.findMany({
