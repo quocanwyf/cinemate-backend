@@ -31,7 +31,7 @@ export class MoviesService {
 
   async getPopularMovies() {
     const movies = await this.prisma.movie.findMany({
-      orderBy: { popularity: 'asc' },
+      orderBy: { popularity: 'desc' },
       where: { popularity: { not: null } },
       take: 20,
     });
@@ -137,7 +137,7 @@ export class MoviesService {
 
   delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  private normalizeMoviesForList(movies: Movie[]) {
+  public normalizeMoviesForList(movies: Movie[]) {
     return movies.map((movie) => ({
       id: movie.id,
       title: movie.title,
