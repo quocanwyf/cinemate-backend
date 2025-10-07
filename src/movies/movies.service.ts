@@ -146,7 +146,7 @@ export class MoviesService {
     }));
   }
 
-  private async enrichAndReturnMovies(movies: Movie[]): Promise<Movie[]> {
+  public async enrichAndReturnMovies(movies: Movie[]): Promise<Movie[]> {
     const moviesToEnrich = movies.filter((movie) => movie.popularity === null);
     if (moviesToEnrich.length === 0) {
       return movies;

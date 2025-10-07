@@ -66,7 +66,7 @@ export class RecommendationsService {
     this.logger.log(`User ${userId}'s top genres: [${topGenreIds.join(', ')}]`);
 
     // BƯỚC 3: Tìm ứng viên và trả về
-    const recommendedMovies = await this.prisma.movie.findMany({
+    const candidateMovies = await this.prisma.movie.findMany({
       where: {
         genres: {
           some: { genreId: { in: topGenreIds } },
@@ -82,10 +82,14 @@ export class RecommendationsService {
     });
 
     this.logger.log(
-      `Found ${recommendedMovies.length} content-based recommendations.`,
+      `Found ${candidateMovies.length} raw recommendations. Enriching data...`,
     );
 
-    // Tái sử dụng hàm chuẩn hóa từ MoviesService
-    return this.moviesService.normalizeMoviesForList(recommendedMovies);
+    const enrichedMovies =
+      await this.moviesService.enrichAndReturnMovies(candidateMovies);
+
+    this.logger.log('Enrichment complete. Normalizing for response.');
+
+    return this.moviesService.normalizeMoviesForList(enrichedMovies);
   }
 }
