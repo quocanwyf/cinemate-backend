@@ -199,3 +199,16 @@ model FeaturedListMovie {
 
   @@id([listId, movieId])
 }
+
+//        GROUP 4: MACHINE LEARNING OPERATIONS
+model MlModel {
+  id          String   @id @default(uuid())
+  version     String   @unique // Ví dụ: "v1.0.0-svd"
+  description String?  @db.Text
+  file_path   String // Đường dẫn tương đối đến file model, ví dụ: "/models/svd_v1.pkl"
+  metrics     Json? // Lưu các chỉ số đánh giá, ví dụ: {"rmse": 0.87}
+  is_active   Boolean  @default(false)
+  created_at  DateTime @default(now())
+
+  @@index([is_active]) // Index để tìm model active nhanh hơn
+}

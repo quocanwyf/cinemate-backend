@@ -12,6 +12,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { UsersModule } from './users/users.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
+import { RecommendationsModule } from './recommendations/recommendations.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
     CommentsModule,
     UsersModule,
     CloudinaryModule,
+    RecommendationsModule,
   ],
   controllers: [AppController],
   providers: [
