@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
@@ -75,12 +76,20 @@ export class MoviesService {
   }
 
   async getMovieById(movieId: number): Promise<MovieDetailDto> {
-    const url = `https://api.themoviedb.org/3/movie/${movieId}?api_key=${this.tmdbApiKey}&language=en-US`;
+    const detailsUrl = `https://api.themoviedb.org/3/movie/${movieId}?api_key=${this.tmdbApiKey}&language=en-US`;
+    const videosUrl = `https://api.themoviedb.org/3/movie/${movieId}/videos?api_key=${this.tmdbApiKey}&language=en-US`;
+
     let movieDetails;
+    let movieVideos;
 
     try {
-      const response = await firstValueFrom(this.httpService.get(url));
-      movieDetails = response.data;
+      const [detailsResponse, videosResponse] = await Promise.all([
+        firstValueFrom(this.httpService.get(detailsUrl)),
+        firstValueFrom(this.httpService.get(videosUrl)),
+      ]);
+
+      movieDetails = detailsResponse.data;
+      movieVideos = videosResponse.data.results;
     } catch (error) {
       if (error.response?.status === 404) {
         throw new NotFoundException(`Movie with ID ${movieId} not found.`);
@@ -88,32 +97,40 @@ export class MoviesService {
       throw error;
     }
 
+    const trailer = movieVideos.find(
+      (video: any) => video.type === 'Trailer' && video.site === 'YouTube',
+    );
+
+    const trailerKey = trailer ? trailer.key : null;
+
     await this.prisma.movie.upsert({
       where: { id: movieId },
       update: {
         title: movieDetails.title,
         overview: movieDetails.overview,
         poster_path: movieDetails.poster_path,
+        backdrop_path: movieDetails.backdrop_path,
+        trailer_key: trailerKey,
         release_date: movieDetails.release_date
           ? new Date(movieDetails.release_date)
           : null,
         popularity: movieDetails.popularity,
         vote_average: movieDetails.vote_average,
         vote_count: movieDetails.vote_count,
-        backdrop_path: movieDetails.backdrop_path,
       },
       create: {
         id: movieDetails.id,
         title: movieDetails.title,
         overview: movieDetails.overview,
         poster_path: movieDetails.poster_path,
+        backdrop_path: movieDetails.backdrop_path,
+        trailer_key: trailerKey,
         release_date: movieDetails.release_date
           ? new Date(movieDetails.release_date)
           : null,
         popularity: movieDetails.popularity,
         vote_average: movieDetails.vote_average,
         vote_count: movieDetails.vote_count,
-        backdrop_path: movieDetails.backdrop_path,
       },
     });
     this.logger.log(`Upserted movie ID ${movieId} to local DB.`);
@@ -124,12 +141,16 @@ export class MoviesService {
       overview: movieDetails.overview,
       poster_path: movieDetails.poster_path,
       backdrop_path: movieDetails.backdrop_path,
+      trailer: trailerKey
+        ? `https://www.youtube.com/watch?v=${trailerKey}`
+        : 'https://www.youtube.com',
       release_date: movieDetails.release_date,
       vote_average: movieDetails.vote_average
         ? movieDetails.vote_average / 2
         : 0,
       genres: movieDetails.genres,
     };
+
     return result;
   }
 

@@ -82,6 +82,7 @@ model Movie {
   overview      String?   @db.Text
   poster_path   String?
   backdrop_path String?
+  trailer_key   String?
   release_date  DateTime?
   popularity    Float?
   vote_average  Float?

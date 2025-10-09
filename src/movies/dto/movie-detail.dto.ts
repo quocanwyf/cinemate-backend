@@ -25,5 +25,7 @@ export class MovieDetailDto {
   vote_average: number; // Điểm đã được chuẩn hóa (0-5)
   @ApiProperty({ type: [GenreDto] }) // Mảng các thể loại
   genres: GenreDto[];
+  @ApiProperty({ example: 'https://www.youtube.com/watch?v=abcdefg' })
+  trailer: string;
   // Chúng ta sẽ thêm các trường khác như diễn viên, trailer sau
 }
