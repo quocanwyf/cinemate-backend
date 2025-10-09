@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
@@ -8,20 +6,13 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
-import { Movie, MovieGenre, Genre } from '@prisma/client';
+import { Movie } from '@prisma/client';
 import { MovieDetailDto } from './dto/movie-detail.dto';
-
-// const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// type MovieWithGenres = Movie & {
-//   genres: (MovieGenre & { genre: Genre })[];
-// };
 
 @Injectable()
 export class MoviesService {
   private readonly logger = new Logger(MoviesService.name);
   private readonly tmdbApiKey: string;
-  private readonly CACHE_TTL_HOURS = 24; // Dữ liệu được coi là "tươi" trong 24 giờ
 
   constructor(
     private prisma: PrismaService,
@@ -84,60 +75,22 @@ export class MoviesService {
   }
 
   async getMovieById(movieId: number): Promise<MovieDetailDto> {
-    const movieFromDb = await this.prisma.movie.findUnique({
-      where: { id: movieId },
-      include: { genres: { include: { genre: true } } },
-    });
-
-    const isCacheStale =
-      !movieFromDb ||
-      !movieFromDb.cached_at ||
-      new Date().getTime() - movieFromDb.cached_at.getTime() >
-        this.CACHE_TTL_HOURS * 60 * 60 * 1000;
-
-    if (isCacheStale) {
-      this.logger.log(
-        `Cache stale or not found for movie ${movieId}. Fetching from TMDB.`,
-      );
-      try {
-        const freshData = await this.fetchAndSyncMovie(movieId);
-        return this.mapToMovieDetailDto(
-          freshData.movieDetails,
-          freshData.movieVideos,
-        );
-      } catch (error) {
-        if (movieFromDb) {
-          this.logger.warn(
-            `TMDB fetch failed for movie ${movieId}. Serving stale data from DB.`,
-          );
-          // Fallback: Nếu fetch lỗi nhưng có dữ liệu cũ, vẫn phục vụ dữ liệu cũ
-          return this.mapToMovieDetailDto(movieFromDb, []); // Không có video trong cache
-        }
-        // Nếu fetch lỗi và không có cache, lúc này mới báo lỗi
-        throw error;
-      }
-    }
-
-    this.logger.log(`Serving movie ${movieId} from cache.`);
-    // Dữ liệu cache không có video, nên ta fetch riêng video
-    const movieVideos = await this.fetchMovieVideosFromTMDB(movieId);
-    return this.mapToMovieDetailDto(movieFromDb, movieVideos);
-  }
-
-  private async fetchAndSyncMovie(movieId: number) {
-    const detailsUrl = `https://api.themoviedb.org/3/movie/${movieId}?api_key=${this.tmdbApiKey}&language=en-US`;
-    const videosUrl = `https://api.themoviedb.org/3/movie/${movieId}/videos?api_key=${this.tmdbApiKey}&language=en-US`;
+    const url = `https://api.themoviedb.org/3/movie/${movieId}?api_key=${this.tmdbApiKey}&language=en-US`;
+    let movieDetails;
 
     try {
-      const [detailsResponse, videosResponse] = await Promise.all([
-        firstValueFrom(this.httpService.get(detailsUrl)),
-        firstValueFrom(this.httpService.get(videosUrl)),
-      ]);
+      const response = await firstValueFrom(this.httpService.get(url));
+      movieDetails = response.data;
+    } catch (error) {
+      if (error.response?.status === 404) {
+        throw new NotFoundException(`Movie with ID ${movieId} not found.`);
+      }
+      throw error;
+    }
 
-      const movieDetails = detailsResponse.data;
-      const movieVideos = videosResponse.data.results;
-
-      const movieData = {
+    await this.prisma.movie.upsert({
+      where: { id: movieId },
+      update: {
         title: movieDetails.title,
         overview: movieDetails.overview,
         poster_path: movieDetails.poster_path,
@@ -147,60 +100,39 @@ export class MoviesService {
         popularity: movieDetails.popularity,
         vote_average: movieDetails.vote_average,
         vote_count: movieDetails.vote_count,
-        cached_at: new Date(), // Cập nhật lại thời gian cache
-      };
+        backdrop_path: movieDetails.backdrop_path,
+      },
+      create: {
+        id: movieDetails.id,
+        title: movieDetails.title,
+        overview: movieDetails.overview,
+        poster_path: movieDetails.poster_path,
+        release_date: movieDetails.release_date
+          ? new Date(movieDetails.release_date)
+          : null,
+        popularity: movieDetails.popularity,
+        vote_average: movieDetails.vote_average,
+        vote_count: movieDetails.vote_count,
+        backdrop_path: movieDetails.backdrop_path,
+      },
+    });
+    this.logger.log(`Upserted movie ID ${movieId} to local DB.`);
 
-      await this.prisma.movie.upsert({
-        where: { id: movieId },
-        update: movieData,
-        create: { id: movieId, ...movieData },
-      });
-      this.logger.log(`Upserted movie ID ${movieId} to local DB.`);
-
-      return { movieDetails, movieVideos };
-    } catch (error) {
-      if (error.response?.status === 404) {
-        throw new NotFoundException(
-          `Movie with ID ${movieId} not found on TMDB.`,
-        );
-      }
-      this.logger.error(
-        `Failed to fetch from TMDB for movie ${movieId}: ${error.message}`,
-      );
-      throw error; // Ném lỗi để hàm gọi có thể xử lý fallback
-    }
-  }
-
-  private mapToMovieDetailDto(
-    movieData: any,
-    videoData: any[],
-  ): MovieDetailDto {
-    return {
-      id: movieData.id,
-      title: movieData.title,
-      overview: movieData.overview,
-      poster_path: movieData.poster_path,
-      backdrop_path: movieData.backdrop_path, // Lấy từ TMDB hoặc sẽ là null/undefined
-      release_date:
-        movieData.release_date?.toISOString() || movieData.release_date,
-      vote_average: movieData.vote_average ? movieData.vote_average / 2 : 0,
-      genres: movieData.genres?.map((g) => ({ id: g.id, name: g.name })) || [],
-      videos: videoData.filter(
-        (v) =>
-          v.site === 'YouTube' && (v.type === 'Trailer' || v.type === 'Teaser'),
-      ),
+    const result: MovieDetailDto = {
+      id: movieDetails.id,
+      title: movieDetails.title,
+      overview: movieDetails.overview,
+      poster_path: movieDetails.poster_path,
+      backdrop_path: movieDetails.backdrop_path,
+      release_date: movieDetails.release_date,
+      vote_average: movieDetails.vote_average
+        ? movieDetails.vote_average / 2
+        : 0,
+      genres: movieDetails.genres,
     };
+    return result;
   }
 
-  private async fetchMovieVideosFromTMDB(movieId: number): Promise<any[]> {
-    try {
-      const videosUrl = `https://api.themoviedb.org/3/movie/${movieId}/videos?api_key=${this.tmdbApiKey}&language=en-US`;
-      const response = await firstValueFrom(this.httpService.get(videosUrl));
-      return response.data.results;
-    } catch {
-      return []; // Nếu lỗi, trả về mảng rỗng
-    }
-  }
   // =================================================================
   //                        PRIVATE HELPER METHODS
   // =================================================================
@@ -213,11 +145,15 @@ export class MoviesService {
       title: movie.title,
       poster_path: movie.poster_path,
       vote_average: movie.vote_average ? movie.vote_average / 2 : null,
+      backdrop_path: movie.backdrop_path,
+      release_date: movie.release_date,
     }));
   }
 
   public async enrichAndReturnMovies(movies: Movie[]): Promise<Movie[]> {
-    const moviesToEnrich = movies.filter((movie) => movie.popularity === null);
+    const moviesToEnrich = movies.filter(
+      (movie) => movie.popularity === null || movie.backdrop_path === null,
+    );
     if (moviesToEnrich.length === 0) {
       return movies;
     }
@@ -260,6 +196,7 @@ export class MoviesService {
       const url = `https://api.themoviedb.org/3/movie/${movieId}?api_key=${this.tmdbApiKey}&language=en-US`;
       const response = await firstValueFrom(this.httpService.get(url));
       const movieDetails = response.data;
+      console.log('cc', movieDetails);
       await this.prisma.movie.update({
         where: { id: movieId },
         data: {
@@ -268,6 +205,10 @@ export class MoviesService {
           popularity: movieDetails.popularity ?? 0,
           vote_average: movieDetails.vote_average ?? 0,
           vote_count: movieDetails.vote_count ?? 0,
+          release_date: movieDetails.release_date
+            ? new Date(movieDetails.release_date)
+            : null,
+          backdrop_path: movieDetails.backdrop_path,
         },
       });
     } catch (error) {

@@ -12,4 +12,7 @@ export class MovieDto {
 
   @ApiProperty({ example: 4.3 })
   vote_average: number;
+
+  @ApiProperty({ example: '/9BBTo63ANSmhC4e6r62OJFuK2GL.jpg' })
+  backdrop_path: string;
 }

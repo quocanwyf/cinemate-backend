@@ -77,15 +77,16 @@ model PasswordResetToken {
 
 //        GROUP 2: MOVIES & INTERACTIONS 
 model Movie {
-  id           Int       @id // ID from TMDB
-  title        String
-  overview     String?   @db.Text
-  poster_path  String?
-  release_date DateTime?
-  popularity   Float?
-  vote_average Float?
-  vote_count   Int?
-  cached_at    DateTime  @default(now())
+  id            Int       @id // ID from TMDB
+  title         String
+  overview      String?   @db.Text
+  poster_path   String?
+  backdrop_path String?
+  release_date  DateTime?
+  popularity    Float?
+  vote_average  Float?
+  vote_count    Int?
+  cached_at     DateTime  @default(now())
 
   // Relations
   genres          MovieGenre[]
