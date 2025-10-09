@@ -8,6 +8,20 @@ class GenreDto {
   name: string;
 }
 
+class VideoDto {
+  @ApiProperty({ example: '6_20_2024_trailere_1' })
+  id: string; // ID của video trên TMDB
+
+  @ApiProperty({ example: 'SUXWAEX2jlg' })
+  key: string; // YouTube key
+
+  @ApiProperty({ example: 'YouTube' })
+  site: string;
+
+  @ApiProperty({ example: 'Trailer' })
+  type: string;
+}
+
 export class MovieDetailDto {
   @ApiProperty()
   id: number;
@@ -25,5 +39,6 @@ export class MovieDetailDto {
   vote_average: number; // Điểm đã được chuẩn hóa (0-5)
   @ApiProperty({ type: [GenreDto] }) // Mảng các thể loại
   genres: GenreDto[];
-  // Chúng ta sẽ thêm các trường khác như diễn viên, trailer sau
+  @ApiProperty({ type: [VideoDto] })
+  videos: VideoDto[];
 }
