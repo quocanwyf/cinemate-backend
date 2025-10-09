@@ -1,9 +1,16 @@
-import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe } from '@nestjs/common';
 import { MoviesService } from './movies.service';
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiOkResponse,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { MovieDto } from './dto/movie.dto';
 import { SearchMovieDto } from './dto/search-movie.dto';
 import { MovieDetailDto } from './dto/movie-detail.dto';
+import { Query } from '@nestjs/common';
 
 @ApiTags('movies') // Nhóm các API này dưới tag "movies"
 @Controller('movies')
@@ -40,6 +47,37 @@ export class MoviesController {
   })
   searchMovies(@Query() searchMovieDto: SearchMovieDto) {
     return this.moviesService.searchMovies(searchMovieDto.query);
+  }
+
+  @Get('random')
+  @ApiOperation({ summary: 'Get random movies' })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Number of movies to return (default: 10, max: 50)',
+    example: 10,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Random movies retrieved successfully',
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'number' },
+          title: { type: 'string' },
+          poster_path: { type: 'string', nullable: true },
+          backdrop_path: { type: 'string', nullable: true },
+          vote_average: { type: 'number', nullable: true },
+          release_date: { type: 'string', format: 'date-time', nullable: true },
+        },
+      },
+    },
+  })
+  async getRandomMovies(@Query('limit') limit?: string) {
+    const parsedLimit = limit ? Math.min(parseInt(limit), 50) : 10;
+    return this.moviesService.getRandomMovies(parsedLimit);
   }
 
   @Get(':id') // Đường dẫn sẽ là /movies/123

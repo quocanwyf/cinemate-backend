@@ -154,6 +154,20 @@ export class MoviesService {
     return result;
   }
 
+  async getRandomMovies(limit: number = 10) {
+    // Sử dụng raw SQL với ORDER BY RANDOM()
+    const movies = await this.prisma.$queryRaw<Movie[]>`
+    SELECT * FROM "Movie" 
+    WHERE vote_count >= 50 AND vote_average IS NOT NULL
+    ORDER BY RANDOM()
+    LIMIT ${limit}
+  `;
+
+    const enrichedMovies = await this.enrichAndReturnMovies(movies);
+    this.logger.log(`Retrieved ${enrichedMovies.length} random movies`);
+    return this.normalizeMoviesForList(enrichedMovies);
+  }
+
   // =================================================================
   //                        PRIVATE HELPER METHODS
   // =================================================================
@@ -275,5 +289,14 @@ export class MoviesService {
         `Failed to cleanup movie ID ${movieId}: ${cleanupError.message}`,
       );
     }
+  }
+
+  private shuffleArray<T>(array: T[]): T[] {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
   }
 }
