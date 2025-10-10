@@ -18,12 +18,112 @@ export class CommentsService {
   constructor(private prisma: PrismaService) {}
 
   // Lấy tất cả bình luận của một phim (dạng cây)
-  async getCommentsByMovie(movieId: number) {
-    // Lấy tất cả bình luận của phim
-    const comments = await this.prisma.comment.findMany({
-      where: { movieId: movieId }, // Chỉ lấy comment chưa bị xóa
+  //  method getCommentsByMovie hiện tại
+  async getCommentsByMovie(
+    movieId: number,
+    page: number = 1,
+    limit: number = 20,
+  ) {
+    const skip = (page - 1) * limit;
+
+    // STEP 1: Lấy root comments với pagination
+    const rootComments = await this.prisma.comment.findMany({
+      where: {
+        movieId: movieId,
+        parentCommentId: null, // Chỉ lấy root comments
+        is_deleted: false,
+      },
       include: {
-        // Lấy thông tin người đăng
+        user: {
+          select: {
+            id: true,
+            display_name: true,
+            avatar_url: true,
+          },
+        },
+        _count: {
+          select: {
+            replies: {
+              where: { is_deleted: false },
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' }, // Mới nhất trước
+      skip,
+      take: limit,
+    });
+
+    // STEP 2: Load 3 replies preview cho mỗi root comment
+    const commentsWithPreviews = await Promise.all(
+      rootComments.map(async (rootComment) => {
+        const previewReplies = await this.prisma.comment.findMany({
+          where: {
+            parentCommentId: rootComment.id,
+            is_deleted: false,
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                display_name: true,
+                avatar_url: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'asc' }, // Replies cũ trước
+          take: 3, // ⭐ CHỈ LẤY 3 REPLIES ĐẦU
+        });
+
+        return {
+          ...rootComment,
+          replies: previewReplies,
+          repliesMetadata: {
+            totalReplies: rootComment._count.replies,
+            previewCount: previewReplies.length,
+            hasMoreReplies: rootComment._count.replies > 3,
+            hiddenCount: Math.max(0, rootComment._count.replies - 3),
+          },
+        };
+      }),
+    );
+
+    // STEP 3: Pagination metadata
+    const totalRootComments = await this.prisma.comment.count({
+      where: {
+        movieId: movieId,
+        parentCommentId: null,
+        is_deleted: false,
+      },
+    });
+
+    return {
+      comments: commentsWithPreviews,
+      pagination: {
+        page,
+        limit,
+        total: totalRootComments,
+        totalPages: Math.ceil(totalRootComments / limit),
+        hasNext: page < Math.ceil(totalRootComments / limit),
+        hasPrev: page > 1,
+      },
+    };
+  }
+
+  //  method mới cho load more replies
+  async getRepliesByComment(
+    commentId: string,
+    page: number = 1,
+    limit: number = 10,
+  ) {
+    const skip = (page - 1) * limit;
+
+    const replies = await this.prisma.comment.findMany({
+      where: {
+        parentCommentId: commentId,
+        is_deleted: false,
+      },
+      include: {
         user: {
           select: {
             id: true,
@@ -32,44 +132,29 @@ export class CommentsService {
           },
         },
       },
-      orderBy: {
-        createdAt: 'asc', // Sắp xếp theo thời gian cũ nhất -> mới nhất
+      orderBy: { createdAt: 'asc' },
+      skip,
+      take: limit,
+    });
+
+    const totalReplies = await this.prisma.comment.count({
+      where: {
+        parentCommentId: commentId,
+        is_deleted: false,
       },
     });
 
-    // Xây dựng cấu trúc cây cho các bình luận trả lời
-    const commentMap = new Map<string, any>();
-    const rootComments: any[] = [];
-
-    comments.forEach((comment) => {
-      // Nếu comment đã bị xóa, chúng ta chỉ giữ lại những thông tin cần thiết
-      // để duy trì cấu trúc cây
-      if (comment.is_deleted) {
-        commentMap.set(comment.id, {
-          id: comment.id,
-          content: comment.content,
-          is_deleted: true,
-          parentCommentId: comment.parentCommentId,
-          replies: [],
-          // Các trường khác sẽ là undefined
-        });
-      } else {
-        commentMap.set(comment.id, { ...comment, replies: [] });
-      }
-    });
-
-    comments.forEach((comment) => {
-      if (comment.parentCommentId && commentMap.has(comment.parentCommentId)) {
-        const parentInMap = commentMap.get(comment.parentCommentId);
-        if (parentInMap) {
-          parentInMap.replies.push(commentMap.get(comment.id));
-        }
-      } else {
-        rootComments.push(commentMap.get(comment.id));
-      }
-    });
-
-    return rootComments;
+    return {
+      replies,
+      pagination: {
+        page,
+        limit,
+        total: totalReplies,
+        totalPages: Math.ceil(totalReplies / limit),
+        hasNext: page < Math.ceil(totalReplies / limit),
+        hasPrev: page > 1,
+      },
+    };
   }
 
   // Tạo một bình luận mới

@@ -15,11 +15,18 @@ import {
   ParseUUIDPipe,
   HttpStatus,
   HttpCode,
+  Query,
 } from '@nestjs/common';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { AuthGuard } from '@nestjs/passport';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { UpdateCommentDto } from './dto/update-comment.dto';
 
 @ApiTags('comments')
@@ -28,9 +35,45 @@ export class CommentsController {
   constructor(private readonly commentsService: CommentsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Get all comments for a movie' })
-  getCommentsByMovie(@Param('movieId', ParseIntPipe) movieId: number) {
-    return this.commentsService.getCommentsByMovie(movieId);
+  @ApiOperation({ summary: 'Get comments for a movie with pagination' })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
+  @ApiResponse({
+    status: 200,
+    description: 'Comments retrieved successfully with pagination',
+  })
+  getCommentsByMovie(
+    @Param('movieId', ParseIntPipe) movieId: number,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = page ? parseInt(page) : 1;
+    const limitNum = limit ? Math.min(parseInt(limit), 50) : 20; // Max 50
+
+    return this.commentsService.getCommentsByMovie(movieId, pageNum, limitNum);
+  }
+
+  @Get(':commentId/replies')
+  @ApiOperation({ summary: 'Get more replies for a specific comment' })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 10 })
+  @ApiResponse({
+    status: 200,
+    description: 'Replies retrieved successfully',
+  })
+  getRepliesByComment(
+    @Param('commentId', ParseUUIDPipe) commentId: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = page ? parseInt(page) : 1;
+    const limitNum = limit ? Math.min(parseInt(limit), 20) : 10;
+
+    return this.commentsService.getRepliesByComment(
+      commentId,
+      pageNum,
+      limitNum,
+    );
   }
 
   @Post()
