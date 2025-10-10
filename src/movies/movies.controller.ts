@@ -1,6 +1,17 @@
-import { Controller, Get, Param, ParseIntPipe } from '@nestjs/common';
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { MoviesService } from './movies.service';
 import {
+  ApiBearerAuth,
   ApiOkResponse,
   ApiOperation,
   ApiQuery,
@@ -11,6 +22,7 @@ import { MovieDto } from './dto/movie.dto';
 import { SearchMovieDto } from './dto/search-movie.dto';
 import { MovieDetailDto } from './dto/movie-detail.dto';
 import { Query } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport/dist/auth.guard';
 
 @ApiTags('movies') // Nhóm các API này dưới tag "movies"
 @Controller('movies')
@@ -82,11 +94,17 @@ export class MoviesController {
 
   @Get(':id') // Đường dẫn sẽ là /movies/123
   @ApiOperation({ summary: 'Get details for a specific movie' })
+  @ApiBearerAuth()
+  @UseGuards(AuthGuard('jwt'))
   @ApiOkResponse({
     description: 'Returns the full details of a movie.',
     type: MovieDetailDto,
   })
-  getMovieById(@Param('id', ParseIntPipe) id: number) {
-    return this.moviesService.getMovieById(id);
+  async getMovieById(@Param('id', ParseIntPipe) id: number, @Request() req?) {
+    console.log('Authenticated user IDdddddddddddddddddđ:', req.user);
+
+    const userId = req?.user?.id || null;
+    console.log('Authenticated user IDdddddddddddddddddđ:', userId);
+    return this.moviesService.getMovieById(id, userId);
   }
 }

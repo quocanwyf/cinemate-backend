@@ -27,5 +27,7 @@ export class MovieDetailDto {
   genres: GenreDto[];
   @ApiProperty({ example: 'https://www.youtube.com/watch?v=abcdefg' })
   trailer: string;
+  @ApiProperty()
+  is_in_watchlist: boolean;
   // Chúng ta sẽ thêm các trường khác như diễn viên, trailer sau
 }

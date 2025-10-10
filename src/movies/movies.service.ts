@@ -75,7 +75,10 @@ export class MoviesService {
     }));
   }
 
-  async getMovieById(movieId: number): Promise<MovieDetailDto> {
+  async getMovieById(
+    movieId: number,
+    userId?: string,
+  ): Promise<MovieDetailDto> {
     const detailsUrl = `https://api.themoviedb.org/3/movie/${movieId}?api_key=${this.tmdbApiKey}&language=en-US`;
     const videosUrl = `https://api.themoviedb.org/3/movie/${movieId}/videos?api_key=${this.tmdbApiKey}&language=en-US`;
 
@@ -133,6 +136,21 @@ export class MoviesService {
         vote_count: movieDetails.vote_count,
       },
     });
+
+    //   Check if movie is in user's watchlist
+    let isInWatchlist = false;
+    if (userId) {
+      const watchlistEntry = await this.prisma.watchlist.findUnique({
+        where: {
+          userId_movieId: {
+            userId: userId,
+            movieId: movieId,
+          },
+        },
+      });
+      isInWatchlist = !!watchlistEntry;
+    }
+
     this.logger.log(`Upserted movie ID ${movieId} to local DB.`);
 
     const result: MovieDetailDto = {
@@ -149,6 +167,7 @@ export class MoviesService {
         ? movieDetails.vote_average / 2
         : 0,
       genres: movieDetails.genres,
+      is_in_watchlist: isInWatchlist,
     };
 
     return result;
