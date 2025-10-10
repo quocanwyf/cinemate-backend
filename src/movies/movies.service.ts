@@ -138,17 +138,34 @@ export class MoviesService {
     });
 
     //   Check if movie is in user's watchlist
+    let userRating;
     let isInWatchlist = false;
     if (userId) {
-      const watchlistEntry = await this.prisma.watchlist.findUnique({
-        where: {
-          userId_movieId: {
-            userId: userId,
-            movieId: movieId,
+      const [watchlistEntry, ratingEntry] = await Promise.all([
+        // Check watchlist
+        this.prisma.watchlist.findUnique({
+          where: {
+            userId_movieId: {
+              userId: userId,
+              movieId: movieId,
+            },
           },
-        },
-      });
+        }),
+        this.prisma.rating.findUnique({
+          where: {
+            userId_movieId: {
+              userId: userId,
+              movieId: movieId,
+            },
+          },
+          select: {
+            score: true, // Chỉ lấy score
+          },
+        }),
+      ]);
+
       isInWatchlist = !!watchlistEntry;
+      userRating = ratingEntry?.score || null;
     }
 
     this.logger.log(`Upserted movie ID ${movieId} to local DB.`);
@@ -168,6 +185,7 @@ export class MoviesService {
         : 0,
       genres: movieDetails.genres,
       is_in_watchlist: isInWatchlist,
+      user_rating: userRating,
     };
 
     return result;

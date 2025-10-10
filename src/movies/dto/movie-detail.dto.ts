@@ -29,5 +29,11 @@ export class MovieDetailDto {
   trailer: string;
   @ApiProperty()
   is_in_watchlist: boolean;
+  @ApiProperty({
+    example: 4,
+    description: 'User rating for this movie (1-5), null if not rated',
+    nullable: true,
+  })
+  user_rating: number | null;
   // Chúng ta sẽ thêm các trường khác như diễn viên, trailer sau
 }
