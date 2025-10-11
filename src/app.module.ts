@@ -13,6 +13,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { UsersModule } from './users/users.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
+import { TrackingModule } from './tracking/tracking.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { RecommendationsModule } from './recommendations/recommendations.module'
     UsersModule,
     CloudinaryModule,
     RecommendationsModule,
+    TrackingModule,
   ],
   controllers: [AppController],
   providers: [

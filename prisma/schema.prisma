@@ -30,6 +30,7 @@ model User {
   watchlists          Watchlist[]
   ratings             Rating[]
   comments            Comment[]
+  ViewHistory         ViewHistory[]
 }
 
 model Admin {
@@ -95,6 +96,7 @@ model Movie {
   ratings         Rating[]
   comments        Comment[]
   inFeaturedLists FeaturedListMovie[]
+  ViewHistory     ViewHistory[]
 
   @@index([title])
 }
@@ -171,6 +173,21 @@ model Comment {
 
   @@index([movieId])
   @@index([userId])
+}
+
+model ViewHistory {
+  viewed_at DateTime @default(now())
+
+  // Relation to User
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  // Relation to Movie
+  movie   Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  movieId Int
+  // viewed_at sẽ được cập nhật nếu xem lại
+
+  @@id([userId, movieId]) // Để mỗi user chỉ có 1 record cho mỗi phim
 }
 
 //        GROUP 3: ADMIN & CONTENT CURATION 
