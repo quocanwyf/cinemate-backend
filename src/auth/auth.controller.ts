@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import {
@@ -42,8 +45,15 @@ export class AuthController {
     description: 'Login successful, returns JWT token.',
   })
   @ApiResponse({ status: 401, description: 'Invalid credentials.' })
-  login(@Body() loginDto: LoginDto) {
-    return this.authService.login(loginDto);
+  login(@Body() loginDto: LoginDto, @Request() req) {
+    // Extract device info from request
+    const deviceInfo = {
+      userAgent: req.get('User-Agent') || 'Unknown',
+      ip: req.ip || req.connection?.remoteAddress || 'Unknown',
+      timestamp: new Date().toISOString(),
+    };
+
+    return this.authService.login(loginDto, deviceInfo);
   }
 
   @UseGuards(AuthGuard('jwt')) // <-- ÁP DỤNG "NGƯỜI GÁC CỔNG"
@@ -55,5 +65,24 @@ export class AuthController {
   getProfile(@Request() req) {
     // req.user sẽ chứa thông tin user được trả về từ hàm validate() của JwtStrategy
     return req.user;
+  }
+
+  @UseGuards(AuthGuard('jwt-refresh')) // Sử dụng Guard với strategy 'jwt-refresh'
+  @ApiBearerAuth()
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Refresh access token' })
+  async refreshTokens(@Request() req) {
+    const userId = req.user.sub;
+    const refreshToken = req.user.refreshToken;
+
+    // Extract device info for new refresh token
+    const deviceInfo = {
+      userAgent: req.get('User-Agent') || 'Unknown',
+      ip: req.ip || req.connection?.remoteAddress || 'Unknown',
+      timestamp: new Date().toISOString(),
+    };
+
+    return this.authService.refreshToken(userId, refreshToken, deviceInfo);
   }
 }

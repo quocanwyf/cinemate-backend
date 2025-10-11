@@ -47,9 +47,12 @@ model Admin {
 }
 
 model UserRefreshToken {
-  id         String   @id @default(uuid())
-  token_hash String   @unique
-  expires_at DateTime
+  id          String   @id @default(uuid())
+  token_hash  String   @unique
+  device_info String?
+  expires_at  DateTime
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 
   // Relation to User
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
