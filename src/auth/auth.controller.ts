@@ -22,9 +22,9 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { AuthGuard } from '@nestjs/passport/dist/auth.guard';
+import { AuthGuard } from '@nestjs/passport';
 
-@ApiTags('auth') // Nhóm các API này dưới tag "auth"
+@ApiTags('auth')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -38,15 +38,15 @@ export class AuthController {
   }
 
   @Post('login')
-  @HttpCode(HttpStatus.OK) // Mặc định POST là 201, đổi thành 200 OK cho login
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Log in a user' })
   @ApiResponse({
     status: 200,
-    description: 'Login successful, returns JWT token.',
+    description: 'Login successful, returns access_token and refresh_token.',
   })
   @ApiResponse({ status: 401, description: 'Invalid credentials.' })
   login(@Body() loginDto: LoginDto, @Request() req) {
-    // Extract device info from request
+    // ✅ Extract device info với better error handling
     const deviceInfo = {
       userAgent: req.get('User-Agent') || 'Unknown',
       ip: req.ip || req.connection?.remoteAddress || 'Unknown',
@@ -56,33 +56,39 @@ export class AuthController {
     return this.authService.login(loginDto, deviceInfo);
   }
 
-  @UseGuards(AuthGuard('jwt')) // <-- ÁP DỤNG "NGƯỜI GÁC CỔNG"
+  @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth()
   @Get('profile')
   @ApiOperation({ summary: 'Get current user profile' })
   @ApiResponse({ status: 200, description: 'Returns the user profile.' })
   @ApiResponse({ status: 401, description: 'Unauthorized.' })
   getProfile(@Request() req) {
-    // req.user sẽ chứa thông tin user được trả về từ hàm validate() của JwtStrategy
     return req.user;
   }
 
-  @UseGuards(AuthGuard('jwt-refresh')) // Sử dụng Guard với strategy 'jwt-refresh'
+  @UseGuards(AuthGuard('jwt-refresh'))
   @ApiBearerAuth()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Refresh access token' })
+  @ApiOperation({ summary: 'Refresh access token using refresh token' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns new access_token and refresh_token.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid or expired refresh token.',
+  })
   async refreshTokens(@Request() req) {
-    const userId = req.user.sub;
-    const refreshToken = req.user.refreshToken;
+    const userId = req.user.userId;
+    const tokenRecordId = req.user.tokenRecordId;
 
-    // Extract device info for new refresh token
     const deviceInfo = {
       userAgent: req.get('User-Agent') || 'Unknown',
       ip: req.ip || req.connection?.remoteAddress || 'Unknown',
       timestamp: new Date().toISOString(),
     };
 
-    return this.authService.refreshToken(userId, refreshToken, deviceInfo);
+    return this.authService.refreshToken(userId, tokenRecordId, deviceInfo);
   }
 }
