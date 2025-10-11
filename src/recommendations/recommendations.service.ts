@@ -1,95 +1,109 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+// src/recommendations/recommendations.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { MoviesService } from 'src/movies/movies.service';
+import { HttpService } from '@nestjs/axios'; // Import HttpService
+import { ConfigService } from '@nestjs/config'; // Import ConfigService
+import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class RecommendationsService {
   private readonly logger = new Logger(RecommendationsService.name);
+  private readonly aiServiceUrl: string;
 
   constructor(
     private prisma: PrismaService,
     private moviesService: MoviesService,
-  ) {}
+    private readonly httpService: HttpService, // Inject HttpService
+    private configService: ConfigService, // Inject ConfigService
+  ) {
+    // Lấy URL của dịch vụ AI từ biến môi trường
+    this.aiServiceUrl = String(
+      this.configService.get<string>('AI_SERVICE_URL'),
+    );
+    if (!this.aiServiceUrl) {
+      throw new Error('AI_SERVICE_URL is not defined');
+    }
+  }
 
+  // Hàm gọi đến dịch vụ AI (SVD)
+  private async getSvdRecommendations(
+    userId: string,
+    movieIds: number[],
+  ): Promise<{ movieId: number; score: number }[]> {
+    if (movieIds.length === 0) return [];
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(`${this.aiServiceUrl}/recommend/svd`, {
+          user_id: userId,
+          movie_ids: movieIds,
+        }),
+      );
+      return response.data.data || [];
+    } catch (error) {
+      this.logger.error(
+        `Failed to call AI service: ${error.response?.data?.detail || error.message}`,
+      );
+      return []; // Trả về mảng rỗng nếu dịch vụ AI lỗi, không làm sập toàn bộ request
+    }
+  }
+
+  // HÀM CHÍNH: GET RECOMMENDATIONS
   async getRecommendationsForUser(userId: string) {
-    this.logger.log(
-      `Generating V1 (Content-Based) recommendations for user: ${userId}`,
+    this.logger.log(`Generating HYBRID recommendations for user: ${userId}`);
+
+    // (Chúng ta sẽ implement logic Hybrid sau, giờ chỉ test SVD)
+
+    // 1. Lấy danh sách phim người dùng chưa xem
+    const unseenMovieIds = await this.getUnseenMovieIdsForUser(userId);
+
+    // 2. Gọi dịch vụ AI để SVD chấm điểm các phim chưa xem này
+    const svdRecs = await this.getSvdRecommendations(userId, unseenMovieIds);
+
+    // 3. Lọc ra top 20 ID từ kết quả SVD
+    const topSvdMovieIds = svdRecs.slice(0, 20).map((rec) => rec.movieId);
+
+    if (topSvdMovieIds.length === 0) {
+      this.logger.log(
+        'No SVD recommendations found, returning popular movies.',
+      );
+      return this.moviesService.getPopularMovies();
+    }
+
+    // 4. Lấy thông tin chi tiết của các phim đó từ DB của chúng ta
+    const recommendedMovies = await this.prisma.movie.findMany({
+      where: {
+        id: { in: topSvdMovieIds },
+      },
+    });
+
+    // Sắp xếp lại kết quả theo đúng thứ tự của SVD
+    const sortedMovies = recommendedMovies.sort(
+      (a, b) => topSvdMovieIds.indexOf(a.id) - topSvdMovieIds.indexOf(b.id),
     );
 
-    // BƯỚC 1: Xây dựng "Hồ sơ Sở thích" (User's Taste Profile)
-    const highRatedMovies = await this.prisma.rating.findMany({
-      where: {
-        userId: userId,
-        score: { gte: 4 }, // Lấy phim user đánh giá từ 4 sao trở lên
-      },
-      take: 20,
-      orderBy: { created_at: 'desc' },
+    return this.moviesService.normalizeMoviesForList(sortedMovies);
+  }
+
+  // Hàm tiện ích để lấy các phim user chưa xem
+  private async getUnseenMovieIdsForUser(userId: string): Promise<number[]> {
+    const ratedMovies = await this.prisma.rating.findMany({
+      where: { userId },
       select: { movieId: true },
     });
+    const ratedMovieIds = new Set(ratedMovies.map((r) => r.movieId));
 
-    // NẾU LÀ USER MỚI (KHỞI ĐẦU LẠNH) -> DÙNG LOGIC FALLBACK
-    if (highRatedMovies.length < 3) {
-      this.logger.log(
-        `User ${userId} has < 3 high ratings. Returning popular movies as fallback.`,
-      );
-      return this.moviesService.getPopularMovies();
-    }
-
-    const favoriteMovieIds = highRatedMovies.map((r) => r.movieId);
-
-    // BƯỚC 2: Tìm các thể loại yêu thích nhất
-    const favoriteGenres = await this.prisma.movieGenre.findMany({
-      where: { movieId: { in: favoriteMovieIds } },
-      select: { genreId: true },
+    // Chỉ lấy những phim có trong bộ trainset của model (để đảm bảo SVD có thể dự đoán)
+    // Trong thực tế, có thể lấy tất cả và AI service sẽ tự lọc
+    const allMoviesInDb = await this.prisma.movie.findMany({
+      select: { id: true },
     });
 
-    const genreFrequency = favoriteGenres.reduce(
-      (acc, curr) => {
-        acc[curr.genreId] = (acc[curr.genreId] || 0) + 1;
-        return acc;
-      },
-      {} as Record<number, number>,
-    );
-
-    const topGenreIds = Object.entries(genreFrequency)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 3) // Lấy ra 3 thể loại người dùng thích nhất
-      .map(([genreId]) => parseInt(genreId));
-
-    if (topGenreIds.length === 0) {
-      this.logger.log(
-        `No top genres found for user ${userId}. Returning popular movies.`,
-      );
-      return this.moviesService.getPopularMovies();
-    }
-
-    this.logger.log(`User ${userId}'s top genres: [${topGenreIds.join(', ')}]`);
-
-    // BƯỚC 3: Tìm ứng viên và trả về
-    const candidateMovies = await this.prisma.movie.findMany({
-      where: {
-        genres: {
-          some: { genreId: { in: topGenreIds } },
-        },
-        // Loại trừ những phim người dùng đã xem/đánh giá
-        id: { notIn: favoriteMovieIds },
-        ratings: { none: { userId: userId } },
-      },
-      orderBy: {
-        popularity: 'desc', // Sắp xếp theo độ phổ biến
-      },
-      take: 20,
-    });
-
-    this.logger.log(
-      `Found ${candidateMovies.length} raw recommendations. Enriching data...`,
-    );
-
-    const enrichedMovies =
-      await this.moviesService.enrichAndReturnMovies(candidateMovies);
-
-    this.logger.log('Enrichment complete. Normalizing for response.');
-
-    return this.moviesService.normalizeMoviesForList(enrichedMovies);
+    return allMoviesInDb
+      .map((m) => m.id)
+      .filter((id) => !ratedMovieIds.has(id));
   }
 }
