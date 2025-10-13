@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
@@ -17,6 +18,7 @@ import { LoginDto } from './dto/login.dto';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { User, Prisma } from '@prisma/client';
+import { MailService } from 'src/mail/mail.service';
 
 interface DeviceInfo {
   userAgent: string;
@@ -35,6 +37,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private mailService: MailService,
   ) {}
 
   // =================================================================
@@ -119,9 +122,6 @@ export class AuthService {
   }
 
   async validateGoogleUser(profile: any) {
-    // ... (Code validateGoogleUser của bạn đã rất tốt, giữ nguyên ở đây)
-    // ...
-    // Hoặc có thể thêm logic upsert trực tiếp ở đây
     const user = await this.prisma.user.upsert({
       where: { provider_id: profile.providerId },
       update: {
@@ -138,6 +138,98 @@ export class AuthService {
       },
     });
     return user;
+  }
+
+  async forgotPassword(email: string) {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+
+    // Trả về thành công ngay cả khi không tìm thấy user để tránh bị dò email
+    if (!user) {
+      this.logger.warn(
+        `Password reset requested for non-existent email: ${email}`,
+      );
+      return {
+        message:
+          'If an account with this email exists, a password reset link has been sent.',
+      };
+    }
+
+    // Tạo token reset
+    const token = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Token hết hạn sau 1 giờ
+    const expires = new Date();
+    expires.setHours(expires.getHours() + 1);
+
+    // Lưu token vào DB
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        token_hash: hashedToken,
+        expires_at: expires,
+      },
+    });
+
+    // Gửi email
+    try {
+      if (!user.email) {
+        throw new Error('User email is required');
+      }
+      await this.mailService.sendPasswordResetEmail(user.email, token);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send password reset email to ${email}`,
+        error,
+      );
+      // Không báo lỗi cho user, chỉ log lại
+    }
+
+    return {
+      message:
+        'If an account with this email exists, a password reset link has been sent.',
+    };
+  }
+
+  async resetPassword(token: string, newPassword: string) {
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Use transaction để đảm bảo atomicity
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Tìm và lock token
+      const passwordResetToken = await tx.passwordResetToken.findUnique({
+        where: { token_hash: hashedToken },
+      });
+
+      // 2. Kiểm tra token
+      if (!passwordResetToken || passwordResetToken.expires_at < new Date()) {
+        throw new UnauthorizedException(
+          'Invalid or expired password reset token',
+        );
+      }
+
+      // 3. Update password
+      const newHashedPassword = await bcrypt.hash(
+        newPassword,
+        this.SALT_ROUNDS,
+      );
+      await tx.user.update({
+        where: { id: passwordResetToken.userId },
+        data: { password_hash: newHashedPassword },
+      });
+
+      // 4. Delete token
+      await tx.passwordResetToken.delete({
+        where: { id: passwordResetToken.id },
+      });
+
+      // 5. Revoke all existing sessions (optional but recommended)
+      await tx.userRefreshToken.deleteMany({
+        where: { userId: passwordResetToken.userId },
+      });
+
+      return { message: 'Password has been reset successfully.' };
+    });
   }
 
   // =================================================================

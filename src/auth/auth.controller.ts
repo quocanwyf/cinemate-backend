@@ -24,6 +24,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 
 // Định nghĩa một kiểu dữ liệu cho user object sau khi qua các Guard
 interface AuthenticatedRequest extends Request {
@@ -132,5 +134,42 @@ export class AuthController {
 
     // Sử dụng method dedicated cho Google OAuth
     return this.authService.googleLogin(userInDb, deviceInfo);
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Request a password reset' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset email sent successfully.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'User with this email not found.',
+  })
+  forgotPassword(@Body() forgotPasswordDto: ForgotPasswordDto) {
+    return this.authService.forgotPassword(forgotPasswordDto.email);
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Reset password using a token' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password reset successfully.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid or expired reset token.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'User not found.',
+  })
+  resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
+    return this.authService.resetPassword(
+      resetPasswordDto.token,
+      resetPasswordDto.newPassword,
+    );
   }
 }

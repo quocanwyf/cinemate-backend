@@ -9,9 +9,11 @@ import { JwtStrategy } from './jwt.strategy';
 import { JwtRefreshStrategy } from './jwt-refresh.strategy';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { GoogleStrategy } from './google.strategy';
+import { MailModule } from 'src/mail/mail.module';
 
 @Module({
   imports: [
+    MailModule,
     ConfigModule,
     PrismaModule, //    Đảm bảo PrismaModule được import
     PassportModule.register({ defaultStrategy: 'jwt' }),

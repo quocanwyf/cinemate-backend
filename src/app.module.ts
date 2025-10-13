@@ -14,6 +14,7 @@ import { UsersModule } from './users/users.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { RecommendationsModule } from './recommendations/recommendations.module';
 import { TrackingModule } from './tracking/tracking.module';
+import { MailModule } from './mail/mail.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { TrackingModule } from './tracking/tracking.module';
     CloudinaryModule,
     RecommendationsModule,
     TrackingModule,
+    MailModule,
   ],
   controllers: [AppController],
   providers: [
