@@ -1,8 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+// src/auth/auth.controller.ts
+
 import {
   Controller,
   Post,
@@ -12,7 +11,9 @@ import {
   UseGuards,
   Get,
   Request,
+  UnauthorizedException,
 } from '@nestjs/common';
+import express from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -23,6 +24,18 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AuthGuard } from '@nestjs/passport';
+
+// Định nghĩa một kiểu dữ liệu cho user object sau khi qua các Guard
+interface AuthenticatedRequest extends Request {
+  ip: string;
+  get: any;
+  user: {
+    userId: string;
+    email: string;
+    refreshToken?: string;
+    tokenRecordId?: string;
+  };
+}
 
 @ApiTags('auth')
 @Controller('auth')
@@ -44,26 +57,12 @@ export class AuthController {
     status: 200,
     description: 'Login successful, returns access_token and refresh_token.',
   })
-  @ApiResponse({ status: 401, description: 'Invalid credentials.' })
-  login(@Body() loginDto: LoginDto, @Request() req) {
-    // ✅ Extract device info với better error handling
+  login(@Body() loginDto: LoginDto, @Request() req: express.Request) {
     const deviceInfo = {
       userAgent: req.get('User-Agent') || 'Unknown',
-      ip: req.ip || req.connection?.remoteAddress || 'Unknown',
-      timestamp: new Date().toISOString(),
+      ip: req.ip || 'Unknown',
     };
-
     return this.authService.login(loginDto, deviceInfo);
-  }
-
-  @UseGuards(AuthGuard('jwt'))
-  @ApiBearerAuth()
-  @Get('profile')
-  @ApiOperation({ summary: 'Get current user profile' })
-  @ApiResponse({ status: 200, description: 'Returns the user profile.' })
-  @ApiResponse({ status: 401, description: 'Unauthorized.' })
-  getProfile(@Request() req) {
-    return req.user;
   }
 
   @UseGuards(AuthGuard('jwt-refresh'))
@@ -77,18 +76,61 @@ export class AuthController {
   })
   @ApiResponse({
     status: 401,
-    description: 'Invalid or expired refresh token.',
+    description: 'Invalid or revoked refresh token.',
   })
-  async refreshTokens(@Request() req) {
+  async refreshTokens(@Request() req: AuthenticatedRequest) {
     const userId = req.user.userId;
     const tokenRecordId = req.user.tokenRecordId;
 
+    if (!tokenRecordId) {
+      throw new UnauthorizedException('No refresh token provided');
+    }
+
     const deviceInfo = {
       userAgent: req.get('User-Agent') || 'Unknown',
-      ip: req.ip || req.connection?.remoteAddress || 'Unknown',
-      timestamp: new Date().toISOString(),
+      ip: req.ip || 'Unknown',
     };
 
     return this.authService.refreshToken(userId, tokenRecordId, deviceInfo);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth()
+  @Get('profile')
+  @ApiOperation({ summary: 'Get current user profile' })
+  getProfile(@Request() req: AuthenticatedRequest) {
+    return req.user;
+  }
+
+  // =================================================================
+  //                        GOOGLE OAUTH ENDPOINTS
+  // =================================================================
+
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Initiate Google OAuth2 login flow' })
+  async googleAuth() {
+    // Passport-google-oauth20 sẽ tự động xử lý việc chuyển hướng
+  }
+
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  @ApiOperation({ summary: 'Google OAuth2 callback handler' })
+  async googleAuthRedirect(@Request() req: express.Request & { user: any }) {
+    const googleProfile = req.user;
+    if (!googleProfile) {
+      throw new UnauthorizedException('Google authentication failed.');
+    }
+
+    // Tìm hoặc tạo user trong DB
+    const userInDb = await this.authService.validateGoogleUser(googleProfile);
+
+    const deviceInfo = {
+      userAgent: req.get('User-Agent') || 'Unknown',
+      ip: req.ip || 'Unknown',
+    };
+
+    // Sử dụng method dedicated cho Google OAuth
+    return this.authService.googleLogin(userInDb, deviceInfo);
   }
 }

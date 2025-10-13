@@ -8,11 +8,12 @@ import { PassportModule } from '@nestjs/passport';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtRefreshStrategy } from './jwt-refresh.strategy';
 import { PrismaModule } from 'src/prisma/prisma.module';
+import { GoogleStrategy } from './google.strategy';
 
 @Module({
   imports: [
     ConfigModule,
-    PrismaModule, // ✅ Đảm bảo PrismaModule được import
+    PrismaModule, //    Đảm bảo PrismaModule được import
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -24,11 +25,7 @@ import { PrismaModule } from 'src/prisma/prisma.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [
-    AuthService,
-    JwtStrategy,
-    JwtRefreshStrategy, // ✅ Đảm bảo JwtRefreshStrategy được register
-  ],
-  exports: [JwtStrategy, PassportModule],
+  providers: [AuthService, JwtStrategy, JwtRefreshStrategy, GoogleStrategy],
+  exports: [JwtStrategy, PassportModule, AuthService],
 })
 export class AuthModule {}

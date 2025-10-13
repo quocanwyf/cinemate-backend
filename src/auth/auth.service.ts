@@ -1,27 +1,34 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+// src/auth/auth.service.ts
+
 import {
   ConflictException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { LoginDto } from './dto/login.dto';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { User, Prisma } from '@prisma/client';
 
 interface DeviceInfo {
   userAgent: string;
   ip: string;
-  timestamp: string;
 }
 
 @Injectable()
 export class AuthService {
-  // ✅ Config values
+  private readonly logger = new Logger(AuthService.name);
   private readonly MAX_DEVICES = 5;
-  private readonly REFRESH_TOKEN_EXPIRY_DAYS = 7;
+  private readonly REFRESH_TOKEN_EXPIRY = '7d';
+  private readonly ACCESS_TOKEN_EXPIRY = '15m';
   private readonly SALT_ROUNDS = 10;
 
   constructor(
@@ -30,7 +37,10 @@ export class AuthService {
     private configService: ConfigService,
   ) {}
 
-  // --- HÀM ĐĂNG KÝ ---
+  // =================================================================
+  //                        PUBLIC API METHODS
+  // =================================================================
+
   async register(registerDto: RegisterDto) {
     const { email, password, display_name } = registerDto;
 
@@ -57,36 +67,135 @@ export class AuthService {
     return result;
   }
 
-  // --- HÀM ĐĂNG NHẬP ---
-  async login(loginDto: LoginDto, deviceInfo?: DeviceInfo) {
+  async login(loginDto: LoginDto, deviceInfo: DeviceInfo) {
     const { email, password } = loginDto;
 
-    const user = await this.prisma.user.findUnique({
-      where: { email },
-    });
+    const user = await this.prisma.user.findUnique({ where: { email } });
 
-    if (!user) {
+    if (
+      !user ||
+      !user.password_hash ||
+      !(await bcrypt.compare(password, user.password_hash))
+    ) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const isPasswordMatching = await bcrypt.compare(
-      password,
-      String(user.password_hash),
-    );
-
-    if (!isPasswordMatching) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    // ✅ FIX: Cleanup expired tokens trước khi login
     await this.cleanupExpiredTokens(user.id);
 
+    return this.generateAndSaveTokens(user, deviceInfo, this.prisma);
+  }
+
+  async refreshToken(
+    userId: string,
+    tokenRecordId: string,
+    deviceInfo: DeviceInfo,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      // Điều này gần như không xảy ra vì Strategy đã check
+      throw new UnauthorizedException('User not found');
+    }
+
+    // Sử dụng transaction để đảm bảo tính toàn vẹn:
+    // hoặc cả hai lệnh (xóa và tạo) đều thành công, hoặc cả hai đều thất bại.
+    return this.prisma.$transaction(async (tx) => {
+      try {
+        // 1. Xóa token cũ trong transaction
+        await tx.userRefreshToken.delete({
+          where: { id: tokenRecordId, userId: userId },
+        });
+      } catch (error) {
+        // Nếu không tìm thấy token để xóa (lỗi P2025 của Prisma), ném lỗi
+        // Điều này xử lý trường hợp token đã bị thu hồi bởi một request khác
+        this.logger.warn(
+          `Attempt to use a revoked or non-existent refresh token for user ${userId}`,
+        );
+        throw new UnauthorizedException('Refresh token has been revoked');
+      }
+
+      // 2. Tạo và lưu cặp token mới trong cùng transaction
+      return this.generateAndSaveTokens(user, deviceInfo, tx);
+    });
+  }
+
+  async validateGoogleUser(profile: any) {
+    // ... (Code validateGoogleUser của bạn đã rất tốt, giữ nguyên ở đây)
+    // ...
+    // Hoặc có thể thêm logic upsert trực tiếp ở đây
+    const user = await this.prisma.user.upsert({
+      where: { provider_id: profile.providerId },
+      update: {
+        display_name: profile.display_name,
+        avatar_url: profile.avatar_url,
+      },
+      create: {
+        email: profile.email,
+        display_name: profile.display_name,
+        provider: 'google',
+        provider_id: profile.providerId,
+        avatar_url: profile.avatar_url,
+        is_email_verified: true,
+      },
+    });
+    return user;
+  }
+
+  // =================================================================
+  //                        PRIVATE HELPER METHODS
+  // =================================================================
+
+  public async generateAndSaveTokens(
+    user: Pick<User, 'id' | 'email'>,
+    deviceInfo: DeviceInfo,
+    prismaClient: Prisma.TransactionClient | PrismaService,
+  ) {
+    const jwtId = crypto.randomUUID();
     const payload = { sub: user.id, email: user.email };
+    const refreshPayload = { sub: user.id, jti: jwtId };
 
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwtService.signAsync(payload),
-      this.getRefreshToken(user.id, deviceInfo),
+      // Tạo Access Token
+      this.jwtService.signAsync(payload, {
+        secret: this.configService.get<string>('JWT_SECRET'),
+        expiresIn: this.ACCESS_TOKEN_EXPIRY,
+      }),
+      // Tạo Refresh Token
+      this.jwtService.signAsync(refreshPayload, {
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+        expiresIn: this.REFRESH_TOKEN_EXPIRY,
+      }),
     ]);
+
+    const hashedRefreshToken = await bcrypt.hash(
+      refreshToken,
+      this.SALT_ROUNDS,
+    );
+
+    // Giới hạn 5 phiên đăng nhập
+    const currentTokens = await prismaClient.userRefreshToken.findMany({
+      where: { userId: user.id },
+      orderBy: { created_at: 'asc' },
+    });
+
+    if (currentTokens.length >= this.MAX_DEVICES) {
+      const oldestToken = currentTokens[0];
+      await prismaClient.userRefreshToken.delete({
+        where: { id: oldestToken.id },
+      });
+    }
+
+    // Lưu hash của refresh token mới vào DB
+    await prismaClient.userRefreshToken.create({
+      data: {
+        userId: user.id,
+        token_hash: hashedRefreshToken,
+        device_info: JSON.stringify({
+          ...deviceInfo,
+          timestamp: new Date().toISOString(),
+        }),
+        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 ngày sau
+      },
+    });
 
     return {
       access_token: accessToken,
@@ -94,189 +203,17 @@ export class AuthService {
     };
   }
 
-  // ✅ FIX: Tạo refresh token với proper error handling
-  private async getRefreshToken(
-    userId: string,
-    deviceInfo?: DeviceInfo,
-  ): Promise<string> {
-    const jwtId = crypto.randomUUID();
-    const refreshTokenPayload = { sub: userId, jti: jwtId };
-
-    const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
-    if (!refreshSecret) {
-      throw new Error('JWT_REFRESH_SECRET is not configured');
-    }
-
-    const refreshToken = await this.jwtService.signAsync(refreshTokenPayload, {
-      secret: refreshSecret,
-      expiresIn: `${this.REFRESH_TOKEN_EXPIRY_DAYS}d`,
-    });
-
-    const tokenString = String(refreshToken);
-    const hashedRefreshToken = await bcrypt.hash(tokenString, this.SALT_ROUNDS);
-
-    // ✅ FIX: Xóa console.log sensitive data
-    // Chỉ log trong development nếu cần
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`🔐 Creating refresh token for user: ${userId}`);
-    }
-
-    // ✅ FIX: Multi-device cleanup - chạy cho cả refresh operation
-    const currentTokens = await this.prisma.userRefreshToken.findMany({
-      where: {
-        userId: userId,
-        expires_at: { gte: new Date() }, // Chỉ đếm token còn hiệu lực
-      },
-      orderBy: { created_at: 'asc' },
-    });
-
-    if (currentTokens.length >= this.MAX_DEVICES) {
-      const tokensToDelete = currentTokens.slice(
-        0,
-        currentTokens.length - this.MAX_DEVICES + 1,
-      );
-      await this.prisma.userRefreshToken.deleteMany({
-        where: {
-          id: {
-            in: tokensToDelete.map((token) => token.id),
-          },
-        },
-      });
-
-      if (process.env.NODE_ENV === 'development') {
-        console.log(
-          `🧹 Removed ${tokensToDelete.length} old tokens (max ${this.MAX_DEVICES} devices)`,
-        );
-      }
-    }
-
-    // ✅ Lưu token vào DB
-    await this.prisma.userRefreshToken.create({
-      data: {
-        userId: userId,
-        token_hash: hashedRefreshToken,
-        device_info: deviceInfo ? JSON.stringify(deviceInfo) : null,
-        expires_at: new Date(
-          Date.now() + this.REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
-        ),
-      },
-    });
-
-    return tokenString;
+  async googleLogin(user: User, deviceInfo: DeviceInfo) {
+    await this.cleanupExpiredTokens(user.id);
+    return this.generateAndSaveTokens(user, deviceInfo, this.prisma);
   }
 
-  // ✅ FIX: Refresh token với transaction để tránh race condition
-  async refreshToken(
-    userId: string,
-    tokenRecordId: string,
-    deviceInfo?: DeviceInfo,
-  ) {
-    // Verify user exists
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      throw new UnauthorizedException('User not found');
-    }
-
-    // ✅ FIX: Dùng transaction để đảm bảo atomic operation
-    const result = await this.prisma.$transaction(async (tx) => {
-      // Xóa token cũ
-      await tx.userRefreshToken.delete({
-        where: { id: tokenRecordId },
-      });
-
-      // Tạo payload cho tokens mới
-      const payload = { sub: user.id, email: user.email };
-
-      // Tạo access token mới
-      const newAccessToken = await this.jwtService.signAsync(payload);
-
-      // Tạo refresh token mới (phải tạo thủ công vì getRefreshToken dùng this.prisma)
-      const jwtId = crypto.randomUUID();
-      const refreshTokenPayload = { sub: userId, jti: jwtId };
-
-      const refreshSecret =
-        this.configService.get<string>('JWT_REFRESH_SECRET');
-      if (!refreshSecret) {
-        throw new Error('JWT_REFRESH_SECRET is not configured');
-      }
-
-      const newRefreshToken = await this.jwtService.signAsync(
-        refreshTokenPayload,
-        {
-          secret: refreshSecret,
-          expiresIn: `${this.REFRESH_TOKEN_EXPIRY_DAYS}d`,
-        },
-      );
-
-      const tokenString = String(newRefreshToken);
-      const hashedRefreshToken = await bcrypt.hash(
-        tokenString,
-        this.SALT_ROUNDS,
-      );
-
-      // Multi-device cleanup trong transaction
-      const currentTokens = await tx.userRefreshToken.findMany({
-        where: {
-          userId: userId,
-          expires_at: { gte: new Date() },
-        },
-        orderBy: { created_at: 'asc' },
-      });
-
-      if (currentTokens.length >= this.MAX_DEVICES) {
-        const tokensToDelete = currentTokens.slice(
-          0,
-          currentTokens.length - this.MAX_DEVICES + 1,
-        );
-        await tx.userRefreshToken.deleteMany({
-          where: {
-            id: {
-              in: tokensToDelete.map((token) => token.id),
-            },
-          },
-        });
-      }
-
-      // Lưu token mới trong transaction
-      await tx.userRefreshToken.create({
-        data: {
-          userId: userId,
-          token_hash: hashedRefreshToken,
-          device_info: deviceInfo ? JSON.stringify(deviceInfo) : null,
-          expires_at: new Date(
-            Date.now() + this.REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
-          ),
-        },
-      });
-
-      return {
-        access_token: newAccessToken,
-        refresh_token: tokenString,
-      };
-    });
-
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`✅ Token refreshed for user: ${userId}`);
-    }
-
-    return result;
-  }
-
-  // ✅ FIX: Cleanup method được sử dụng
-  private async cleanupExpiredTokens(userId: string) {
-    const deletedCount = await this.prisma.userRefreshToken.deleteMany({
+  private async cleanupExpiredTokens(userId: string): Promise<void> {
+    await this.prisma.userRefreshToken.deleteMany({
       where: {
         userId: userId,
         expires_at: { lt: new Date() },
       },
     });
-
-    if (deletedCount.count > 0 && process.env.NODE_ENV === 'development') {
-      console.log(
-        `🧹 Cleaned up ${deletedCount.count} expired tokens for user ${userId}`,
-      );
-    }
-
-    return deletedCount.count;
   }
 }
