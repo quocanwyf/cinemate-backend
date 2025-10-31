@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 // src/auth/auth.controller.ts
@@ -26,8 +27,9 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { GoogleTokenDto } from './dto/google-token.dto';
 
-// Định nghĩa một kiểu dữ liệu cho user object sau khi qua các Guard
+// ✅ Kiểu dữ liệu cho req.user sau khi qua Guard
 interface AuthenticatedRequest extends Request {
   ip: string;
   get: any;
@@ -44,6 +46,7 @@ interface AuthenticatedRequest extends Request {
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // ================== REGISTER ==================
   @Post('register')
   @ApiOperation({ summary: 'Register a new user' })
   @ApiResponse({ status: 201, description: 'User successfully created.' })
@@ -52,6 +55,7 @@ export class AuthController {
     return this.authService.register(registerDto);
   }
 
+  // ================== LOGIN ==================
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Log in a user' })
@@ -67,6 +71,7 @@ export class AuthController {
     return this.authService.login(loginDto, deviceInfo);
   }
 
+  // ================== REFRESH TOKEN ==================
   @UseGuards(AuthGuard('jwt-refresh'))
   @ApiBearerAuth()
   @Post('refresh')
@@ -81,11 +86,10 @@ export class AuthController {
     description: 'Invalid or revoked refresh token.',
   })
   async refreshTokens(@Request() req: AuthenticatedRequest) {
-    const userId = req.user.userId;
-    const tokenRecordId = req.user.tokenRecordId;
+    const { userId, tokenRecordId } = req.user;
 
     if (!tokenRecordId) {
-      throw new UnauthorizedException('No refresh token provided');
+      throw new UnauthorizedException('Invalid refresh token payload');
     }
 
     const deviceInfo = {
@@ -96,6 +100,7 @@ export class AuthController {
     return this.authService.refreshToken(userId, tokenRecordId, deviceInfo);
   }
 
+  // ================== PROFILE ==================
   @UseGuards(AuthGuard('jwt'))
   @ApiBearerAuth()
   @Get('profile')
@@ -105,37 +110,63 @@ export class AuthController {
   }
 
   // =================================================================
-  //                        GOOGLE OAUTH ENDPOINTS
+  //                   GOOGLE OAUTH2 (for web)
   // =================================================================
 
   @Get('google')
   @UseGuards(AuthGuard('google'))
-  @ApiOperation({ summary: 'Initiate Google OAuth2 login flow' })
+  @ApiOperation({ summary: 'Initiate Google OAuth2 login flow (Web)' })
   async googleAuth() {
-    // Passport-google-oauth20 sẽ tự động xử lý việc chuyển hướng
+    // Passport-google-oauth20 sẽ tự động redirect đến Google
   }
 
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
-  @ApiOperation({ summary: 'Google OAuth2 callback handler' })
+  @ApiOperation({ summary: 'Handle Google OAuth2 callback (Web)' })
   async googleAuthRedirect(@Request() req: express.Request & { user: any }) {
     const googleProfile = req.user;
     if (!googleProfile) {
       throw new UnauthorizedException('Google authentication failed.');
     }
 
-    // Tìm hoặc tạo user trong DB
-    const userInDb = await this.authService.validateGoogleUser(googleProfile);
+    const userInDb = await this.authService.validateGoogleToken(googleProfile);
 
     const deviceInfo = {
       userAgent: req.get('User-Agent') || 'Unknown',
       ip: req.ip || 'Unknown',
     };
 
-    // Sử dụng method dedicated cho Google OAuth
     return this.authService.googleLogin(userInDb, deviceInfo);
   }
 
+  // =================================================================
+  //                   GOOGLE ID TOKEN LOGIN (for Mobile)
+  // =================================================================
+
+  @Post('google/token')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Sign in/Sign up with Google ID Token (for Mobile)',
+  })
+  async googleTokenLogin(
+    @Body() googleTokenDto: GoogleTokenDto,
+    @Request() req: express.Request,
+  ) {
+    const deviceInfo = {
+      userAgent: req.get('User-Agent') || 'Unknown',
+      ip: req.ip || 'Unknown',
+    };
+
+    // 1️⃣ Xác thực token Google và upsert user
+    const user = await this.authService.validateGoogleToken(
+      googleTokenDto.idToken,
+    );
+
+    // 2️⃣ Tạo và lưu cặp token của CineMate
+    return this.authService.generateAndSaveTokens(user, deviceInfo);
+  }
+
+  // ================== FORGOT PASSWORD ==================
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Request a password reset' })
@@ -151,9 +182,10 @@ export class AuthController {
     return this.authService.forgotPassword(forgotPasswordDto.email);
   }
 
+  // ================== RESET PASSWORD ==================
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Reset password using a token' })
+  @ApiOperation({ summary: 'Reset password using token' })
   @ApiResponse({
     status: 200,
     description: 'Password reset successfully.',
@@ -161,10 +193,6 @@ export class AuthController {
   @ApiResponse({
     status: 400,
     description: 'Invalid or expired reset token.',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'User not found.',
   })
   resetPassword(@Body() resetPasswordDto: ResetPasswordDto) {
     return this.authService.resetPassword(
