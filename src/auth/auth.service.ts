@@ -16,6 +16,7 @@ import { ConfigService } from '@nestjs/config';
 import { User, Prisma } from '@prisma/client';
 import { MailService } from 'src/mail/mail.service';
 import { OAuth2Client } from 'google-auth-library';
+import { AdminLoginDto } from 'src/admin/dto/admin-login.dto';
 
 interface DeviceInfo {
   userAgent: string;
@@ -262,5 +263,35 @@ export class AuthService {
     await this.prisma.userRefreshToken.deleteMany({
       where: { userId, expires_at: { lt: new Date() } },
     });
+  }
+
+  // === HÀM MỚI CHO ADMIN LOGIN ===
+  async adminLogin(adminLoginDto: AdminLoginDto) {
+    const { email, password } = adminLoginDto;
+
+    const admin = await this.prisma.admin.findUnique({ where: { email } });
+
+    if (!admin || !(await bcrypt.compare(password, admin.password_hash))) {
+      throw new UnauthorizedException('Invalid admin credentials');
+    }
+
+    // Tạo payload cho Admin token
+    // Chúng ta có thể thêm một trường `role` để phân biệt
+    const payload = {
+      sub: admin.id,
+      email: admin.email,
+      role: 'admin', // Dấu hiệu nhận biết đây là token của Admin
+    };
+
+    // Tạo Access Token (có thể dùng chung secret hoặc secret riêng)
+    const accessToken = await this.jwtService.signAsync(payload, {
+      secret: this.configService.get<string>('JWT_SECRET'),
+      expiresIn: '1h', // Cho Admin token sống lâu hơn
+    });
+
+    // Admin không cần Refresh Token phức tạp, chỉ cần Access Token
+    return {
+      access_token: accessToken,
+    };
   }
 }
