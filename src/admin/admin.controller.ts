@@ -18,7 +18,12 @@ import {
   Req,
   Request,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { AuthService } from 'src/auth/auth.service';
 import { AdminLoginDto } from './dto/admin-login.dto';
@@ -28,6 +33,7 @@ import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 import { CreateFeaturedListDto } from './dto/create-featured-list.dto';
 import { UpdateFeaturedListDto } from './dto/update-featured-list.dto';
 import { AdminResponseDto } from './dto/admin-response.dto';
+import { AdminRefreshGuard } from 'src/auth/admin-refresh.guard';
 
 @ApiTags('admin')
 @Controller('admin')
@@ -43,14 +49,32 @@ export class AdminController {
   @Post('auth/login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Log in as an admin' })
+  @ApiResponse({ status: 200, description: 'Login successful' })
+  @ApiResponse({ status: 401, description: 'Invalid credentials' })
   adminLogin(@Body() adminLoginDto: AdminLoginDto) {
     return this.authService.adminLogin(adminLoginDto);
+  }
+
+  @UseGuards(AdminRefreshGuard)
+  @ApiBearerAuth()
+  @Post('auth/refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Refresh admin access token',
+    description: 'Send refresh token in Authorization header as Bearer token',
+  })
+  @ApiResponse({ status: 200, description: 'Token refreshed successfully' })
+  @ApiResponse({ status: 401, description: 'Invalid refresh token' })
+  adminRefresh(@Request() req: any) {
+    // req.user.refreshToken được inject từ JwtAdminRefreshStrategy
+    return this.authService.adminRefreshToken(req.user.refreshToken);
   }
 
   @UseGuards(AdminGuard)
   @ApiBearerAuth()
   @Get('auth/me')
   @ApiOperation({ summary: 'Get current admin profile' })
+  @ApiResponse({ status: 200, description: 'Admin profile retrieved' })
   async getMe(@Request() req): Promise<AdminResponseDto> {
     return this.adminService.getAdminProfile(req.user.id);
   }

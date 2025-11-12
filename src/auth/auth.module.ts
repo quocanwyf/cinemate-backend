@@ -11,6 +11,7 @@ import { PrismaModule } from 'src/prisma/prisma.module';
 import { GoogleStrategy } from './google.strategy';
 import { MailModule } from 'src/mail/mail.module';
 import { JwtAdminStrategy } from './jwt-admin.strategy';
+import { JwtAdminRefreshStrategy } from './jwt-admin-refresh.strategy';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { JwtAdminStrategy } from './jwt-admin.strategy';
     AuthService,
     JwtStrategy,
     JwtRefreshStrategy,
+    JwtAdminRefreshStrategy,
     GoogleStrategy,
     JwtAdminStrategy,
   ],
