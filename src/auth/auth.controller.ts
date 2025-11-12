@@ -29,7 +29,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { GoogleTokenDto } from './dto/google-token.dto';
 
-// ✅ Kiểu dữ liệu cho req.user sau khi qua Guard
+//  Kiểu dữ liệu cho req.user sau khi qua Guard
 interface AuthenticatedRequest extends Request {
   ip: string;
   get: any;

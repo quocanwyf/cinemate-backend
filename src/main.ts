@@ -12,6 +12,7 @@ async function bootstrap() {
       'http://localhost:3000',
       'https://cinemate-admin.vercel.app',
       'http://127.0.0.1:3000',
+      'http://localhost:3001',
     ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: ['Content-Type', 'Authorization'],

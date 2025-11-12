@@ -73,7 +73,13 @@ export class AuthService {
       !user.password_hash ||
       !(await bcrypt.compare(password, user.password_hash))
     ) {
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException('Invalid credentials, please try again.');
+    }
+
+    if (!user.is_active) {
+      throw new UnauthorizedException(
+        'Your account has been banned. Please contact support.',
+      );
     }
 
     await this.cleanupExpiredTokens(user.id);
@@ -91,6 +97,12 @@ export class AuthService {
   ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('User not found');
+
+    if (!user.is_active) {
+      throw new UnauthorizedException(
+        'Your account has been banned. Please contact support.',
+      );
+    }
 
     return this.prisma.$transaction(async (tx) => {
       try {
@@ -146,6 +158,11 @@ export class AuthService {
   }
 
   async googleLogin(user: User, deviceInfo: DeviceInfo) {
+    if (!user.is_active) {
+      throw new UnauthorizedException(
+        'Your account has been banned. Please contact support.',
+      );
+    }
     await this.cleanupExpiredTokens(user.id);
     return this.generateAndSaveTokens(user, deviceInfo, this.prisma);
   }

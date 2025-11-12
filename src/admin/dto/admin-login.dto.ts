@@ -5,7 +5,7 @@ import { ApiProperty } from '@nestjs/swagger';
 export class AdminLoginDto {
   @ApiProperty({
     description: 'Email của admin',
-    example: 'admin@example.com',
+    example: 'admin@cinemate.app',
   })
   @IsEmail()
   email: string;
