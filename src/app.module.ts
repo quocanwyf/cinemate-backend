@@ -16,6 +16,7 @@ import { RecommendationsModule } from './recommendations/recommendations.module'
 import { TrackingModule } from './tracking/tracking.module';
 import { MailModule } from './mail/mail.module';
 import { AdminModule } from './admin/admin.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { AdminModule } from './admin/admin.module';
     TrackingModule,
     MailModule,
     AdminModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [

@@ -31,6 +31,8 @@ model User {
   ratings             Rating[]
   comments            Comment[]
   ViewHistory         ViewHistory[]
+  conversation        Conversation?
+  messages            Message[]
 }
 
 model Admin {
@@ -44,6 +46,7 @@ model Admin {
   // Relations
   adminRefreshTokens   AdminRefreshToken[]
   createdFeaturedLists FeaturedList[]
+  messages             Message[] // ✅ Thêm relation
 }
 
 model UserRefreshToken {
@@ -233,4 +236,55 @@ model MlModel {
   created_at  DateTime @default(now())
 
   @@index([is_active]) // Index để tìm model active nhanh hơn
+}
+
+//        GROUP 5: CONVERSATIONS
+model Conversation {
+  id            String             @id @default(cuid())
+  userId        String             @unique // Mỗi user chỉ có 1 conversation
+  status        ConversationStatus @default(OPEN)
+  lastMessageAt DateTime?
+  unreadCount   Int                @default(0) // Số tin nhắn admin chưa đọc
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([lastMessageAt(sort: Desc)])
+}
+
+enum ConversationStatus {
+  OPEN // Đang mở, cần xử lý
+  CLOSED // Đã đóng, đã xử lý xong
+  ARCHIVED // Lưu trữ, không hiển thị
+}
+
+model Message {
+  id             String     @id @default(cuid())
+  conversationId String
+  userId         String? // ✅ Nullable
+  adminId        String? // ✅ Thêm adminId
+  senderType     SenderType
+  content        String     @db.Text
+  attachments    Json?
+  isRead         Boolean    @default(false)
+  readAt         DateTime?
+  createdAt      DateTime   @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id])
+  admin        Admin?       @relation(fields: [adminId], references: [id])
+
+  @@index([conversationId])
+  @@index([userId])
+  @@index([adminId])
+  @@index([createdAt(sort: Desc)])
+}
+
+enum SenderType {
+  USER // Tin nhắn từ mobile user
+  ADMIN // Tin nhắn từ web admin
 }

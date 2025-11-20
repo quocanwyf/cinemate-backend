@@ -94,10 +94,107 @@ export class AdminService {
   async getUserById(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
+      include: {
+        // ========== COUNTS ==========
+        _count: {
+          select: {
+            comments: true,
+            watchlists: true,
+            ratings: true,
+            ViewHistory: true,
+            userRefreshTokens: true,
+          },
+        },
+
+        // ========== COMMENTS (10 gần nhất) ==========
+        comments: {
+          take: 10,
+          orderBy: { createdAt: 'desc' },
+          where: { is_deleted: false },
+          include: {
+            movie: {
+              select: {
+                id: true,
+                title: true,
+                poster_path: true,
+              },
+            },
+            _count: {
+              select: { replies: true },
+            },
+          },
+        },
+
+        // ========== WATCHLIST (12 phim gần nhất) ==========
+        watchlists: {
+          take: 12,
+          orderBy: { created_at: 'desc' },
+          include: {
+            movie: {
+              select: {
+                id: true,
+                title: true,
+                poster_path: true,
+                release_date: true,
+                vote_average: true,
+              },
+            },
+          },
+        },
+
+        // ========== RATINGS (12 đánh giá gần nhất) ==========
+        ratings: {
+          take: 12,
+          orderBy: { updated_at: 'desc' },
+          include: {
+            movie: {
+              select: {
+                id: true,
+                title: true,
+                poster_path: true,
+                vote_average: true,
+              },
+            },
+          },
+        },
+
+        // ========== VIEW HISTORY (10 phim xem gần nhất) ==========
+        ViewHistory: {
+          take: 10,
+          orderBy: { viewed_at: 'desc' },
+          include: {
+            movie: {
+              select: {
+                id: true,
+                title: true,
+                poster_path: true,
+                release_date: true,
+              },
+            },
+          },
+        },
+
+        // ========== ACTIVE SESSIONS ==========
+        userRefreshTokens: {
+          where: {
+            expires_at: { gt: new Date() },
+          },
+          orderBy: { created_at: 'desc' },
+          select: {
+            id: true,
+            device_info: true,
+            created_at: true,
+            expires_at: true,
+          },
+        },
+      },
     });
+
     if (!user) {
       throw new NotFoundException(`User with ID ${userId} not found.`);
     }
+
+    // Loại bỏ password_hash
     const { password_hash, ...result } = user;
     return result;
   }

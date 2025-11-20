@@ -1,10 +1,22 @@
+/* eslint-disable @typescript-eslint/no-floating-promises */
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
+import { SocketAuthAdapter } from './chat/socket-auth.adapter';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Lấy các service cần thiết từ app
+  const jwtService = app.get(JwtService);
+  const configService = app.get(ConfigService);
+  // Sử dụng WebSocket adapter đã được xác thực
+  app.useWebSocketAdapter(
+    new SocketAuthAdapter(app, jwtService, configService),
+  );
 
   // Thêm logging để debug
   app.enableCors({
