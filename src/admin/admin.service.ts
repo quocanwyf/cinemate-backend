@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -212,6 +213,21 @@ export class AdminService {
   // =====================================
 
   async createFeaturedList(dto: CreateFeaturedListDto, adminId: string) {
+    const existingList = await this.prisma.featuredList.findFirst({
+      where: {
+        title: {
+          equals: dto.title,
+          mode: Prisma.QueryMode.insensitive, // Case-insensitive
+        },
+      },
+    });
+
+    if (existingList) {
+      throw new ConflictException(
+        `Featured list with title "${dto.title}" already exists.`,
+      );
+    }
+
     return this.prisma.featuredList.create({
       data: {
         title: dto.title,
@@ -233,6 +249,21 @@ export class AdminService {
       if (!listExists) {
         throw new NotFoundException(
           `Featured list with ID ${listId} not found.`,
+        );
+      }
+
+      const existingList = await this.prisma.featuredList.findFirst({
+        where: {
+          title: {
+            equals: dto.title,
+            mode: Prisma.QueryMode.insensitive, // Case-insensitive
+          },
+        },
+      });
+
+      if (existingList) {
+        throw new ConflictException(
+          `Featured list with title "${dto.title}" already exists.`,
         );
       }
 

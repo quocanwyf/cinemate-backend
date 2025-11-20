@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 // src/auth/auth.service.ts
 import {
@@ -282,33 +283,170 @@ export class AuthService {
     });
   }
 
-  // === HÀM MỚI CHO ADMIN LOGIN ===
   async adminLogin(adminLoginDto: AdminLoginDto) {
     const { email, password } = adminLoginDto;
 
+    // 1. Tìm admin trong DB
     const admin = await this.prisma.admin.findUnique({ where: { email } });
 
     if (!admin || !(await bcrypt.compare(password, admin.password_hash))) {
       throw new UnauthorizedException('Invalid admin credentials');
     }
 
-    // Tạo payload cho Admin token
-    // Chúng ta có thể thêm một trường `role` để phân biệt
+    // 2. Generate JWT payload
     const payload = {
       sub: admin.id,
       email: admin.email,
-      role: 'admin', // Dấu hiệu nhận biết đây là token của Admin
+      role: 'admin',
     };
 
-    // Tạo Access Token (có thể dùng chung secret hoặc secret riêng)
+    // 3. Generate Access Token (15 phút)
     const accessToken = await this.jwtService.signAsync(payload, {
       secret: this.configService.get<string>('JWT_SECRET'),
-      expiresIn: '1h', // Cho Admin token sống lâu hơn
+      expiresIn: '15m',
     });
 
-    // Admin không cần Refresh Token phức tạp, chỉ cần Access Token
+    // 4. Generate Refresh Token (7 ngày)
+    const refreshToken = await this.jwtService.signAsync(payload, {
+      secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      expiresIn: '7d',
+    });
+
+    // 5. Hash refresh token trước khi lưu DB
+    const hashedRefreshToken = await bcrypt.hash(
+      refreshToken,
+      this.SALT_ROUNDS,
+    );
+
+    // 6. Xóa các refresh token cũ của admin này (cleanup)
+    await this.prisma.adminRefreshToken.deleteMany({
+      where: { adminId: admin.id },
+    });
+
+    // 7. Lưu refresh token mới vào DB
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // 7 ngày
+
+    await this.prisma.adminRefreshToken.create({
+      data: {
+        adminId: admin.id,
+        token_hash: hashedRefreshToken,
+        expires_at: expiresAt,
+      },
+    });
+
+    // 8. Return tokens + admin info
     return {
-      access_token: accessToken,
+      accessToken,
+      refreshToken,
+      admin: {
+        id: admin.id,
+        email: admin.email,
+        full_name: admin.full_name,
+      },
     };
+  }
+
+  async adminRefreshToken(refreshToken: string) {
+    try {
+      // 1. Verify refresh token JWT signature
+      const payload = this.jwtService.verify<{
+        sub: string;
+        email: string;
+        role: string;
+      }>(refreshToken, {
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+      });
+
+      // 2. Tìm tất cả refresh tokens của admin trong DB
+      const adminTokens = await this.prisma.adminRefreshToken.findMany({
+        where: {
+          adminId: payload.sub,
+          expires_at: { gt: new Date() }, // Chỉ lấy token chưa hết hạn
+        },
+        include: { admin: true },
+      });
+
+      if (!adminTokens || adminTokens.length === 0) {
+        throw new UnauthorizedException('No valid refresh token found');
+      }
+
+      // 3. Tìm token khớp bằng cách compare hash
+      let matchedToken: (typeof adminTokens)[0] | null = null;
+
+      for (const tokenRecord of adminTokens) {
+        const isMatch = await bcrypt.compare(
+          refreshToken,
+          tokenRecord.token_hash,
+        );
+        if (isMatch) {
+          matchedToken = tokenRecord;
+          break;
+        }
+      }
+
+      if (!matchedToken) {
+        // Token reuse attack - xóa tất cả tokens của admin này
+        await this.prisma.adminRefreshToken.deleteMany({
+          where: { adminId: payload.sub },
+        });
+        throw new UnauthorizedException(
+          'Invalid refresh token. All sessions revoked.',
+        );
+      }
+
+      // 4. Kiểm tra token đã hết hạn chưa (double-check)
+      if (new Date() > matchedToken.expires_at) {
+        await this.prisma.adminRefreshToken.delete({
+          where: { id: matchedToken.id },
+        });
+        throw new UnauthorizedException('Refresh token expired');
+      }
+
+      // 5. Generate new tokens
+      const newPayload = {
+        sub: matchedToken.admin.id,
+        email: matchedToken.admin.email,
+        role: 'admin',
+      };
+
+      const newAccessToken = await this.jwtService.signAsync(newPayload, {
+        secret: this.configService.get<string>('JWT_SECRET'),
+        expiresIn: '15m',
+      });
+
+      const newRefreshToken = await this.jwtService.signAsync(newPayload, {
+        secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
+        expiresIn: '7d',
+      });
+
+      // 6. Update refresh token trong DB (rotation)
+      const newHashedToken = await bcrypt.hash(
+        newRefreshToken,
+        this.SALT_ROUNDS,
+      );
+      const newExpiresAt = new Date();
+      newExpiresAt.setDate(newExpiresAt.getDate() + 7);
+
+      await this.prisma.adminRefreshToken.update({
+        where: { id: matchedToken.id },
+        data: {
+          token_hash: newHashedToken,
+          expires_at: newExpiresAt,
+        },
+      });
+
+      // 7. Return new tokens
+      return {
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+      };
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      this.logger.error('Admin refresh token error:', error);
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
   }
 }
