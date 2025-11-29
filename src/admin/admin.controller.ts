@@ -36,6 +36,7 @@ import { UpdateFeaturedListDto } from './dto/update-featured-list.dto';
 import { AdminResponseDto } from './dto/admin-response.dto';
 import { AdminRefreshGuard } from 'src/auth/admin-refresh.guard';
 import { GetCommentsQueryDto } from './dto/get-comments-query.dto'; // ✅ Import DTO
+import { BulkDeleteCommentsDto } from './dto/bulk-delete-comments.dto'; // ✅ Import
 
 @ApiTags('admin')
 @Controller('admin')
@@ -243,5 +244,28 @@ export class AdminController {
   @ApiOperation({ summary: 'Soft delete a comment (admin moderation)' })
   deleteComment(@Param('id') id: string) {
     return this.adminService.deleteComment(id);
+  }
+
+  @UseGuards(AdminGuard)
+  @ApiBearerAuth()
+  @Post('comments/bulk-delete') // ✅ NEW endpoint
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Bulk delete multiple comments',
+    description:
+      'Soft delete multiple comments at once by providing an array of IDs',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Comments deleted successfully',
+    schema: {
+      example: {
+        message: 'Successfully deleted 5 comment(s)',
+        deletedCount: 5,
+      },
+    },
+  })
+  async bulkDeleteComments(@Body() dto: BulkDeleteCommentsDto) {
+    return this.adminService.bulkDeleteComments(dto.commentIds);
   }
 }

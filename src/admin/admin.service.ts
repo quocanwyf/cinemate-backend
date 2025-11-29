@@ -511,6 +511,27 @@ export class AdminService {
     });
   }
 
+  async bulkDeleteComments(commentIds: string[]) {
+    // ✅ Soft delete nhiều comments cùng lúc
+    const result = await this.prisma.comment.updateMany({
+      where: {
+        id: {
+          in: commentIds,
+        },
+        is_deleted: false, // Chỉ xóa những comment chưa bị xóa
+      },
+      data: {
+        is_deleted: true,
+        content: '[This comment has been removed by an administrator]',
+      },
+    });
+
+    return {
+      message: `Successfully deleted ${result.count} comment(s)`,
+      deletedCount: result.count,
+    };
+  }
+
   async getDashboardStatistics() {
     // Đếm tổng số users
     const totalUsers = await this.prisma.user.count();
