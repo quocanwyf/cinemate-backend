@@ -53,6 +53,14 @@ export class GetCommentsQueryDto {
   @IsString()
   userId?: string;
 
+  @ApiPropertyOptional({
+    description: 'Filter by username (display_name or email)',
+    example: 'User 32',
+  })
+  @IsOptional()
+  @IsString()
+  username?: string;
+
   // ✅ NEW: Filter by date range
   @ApiPropertyOptional({
     description: 'Start date (ISO 8601 format)',

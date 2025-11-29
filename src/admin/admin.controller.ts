@@ -213,6 +213,13 @@ export class AdminController {
     description: 'Filter by user ID',
   })
   @ApiQuery({
+    name: 'username',
+    required: false,
+    type: String,
+    example: 'User 32',
+    description: 'Filter by username (display_name or email)',
+  })
+  @ApiQuery({
     name: 'startDate',
     required: false,
     type: String,

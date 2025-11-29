@@ -399,6 +399,7 @@ export class AdminService {
       search,
       movieId,
       userId,
+      username,
       startDate,
       endDate,
     } = queryDto;
@@ -426,6 +427,25 @@ export class AdminService {
     // ✅ Filter: By userId
     if (userId) {
       where.userId = userId;
+    }
+
+    if (username) {
+      where.user = {
+        OR: [
+          {
+            display_name: {
+              contains: username,
+              mode: 'insensitive',
+            },
+          },
+          {
+            email: {
+              contains: username,
+              mode: 'insensitive',
+            },
+          },
+        ],
+      };
     }
 
     // ✅ Filter: By date range
