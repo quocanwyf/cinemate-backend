@@ -10,6 +10,9 @@ import {
   UseGuards,
   Request,
   Query,
+  UploadedFile,
+  BadRequestException,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import {
@@ -17,15 +20,22 @@ import {
   ApiOperation,
   ApiQuery,
   ApiTags,
+  ApiConsumes,
+  ApiBody,
 } from '@nestjs/swagger';
 import { AdminGuard } from 'src/auth/admin.guard';
 import { AuthGuard } from '@nestjs/passport';
 import { ConversationStatus } from '@prisma/client';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 @ApiTags('Chat (REST)')
-@Controller()
+@Controller('chat')
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
+  constructor(
+    private chatService: ChatService,
+    private cloudinaryService: CloudinaryService, // ✅ Đã có service này rồi!
+  ) {}
 
   // --- ENDPOINTS CHO USER ---
 
@@ -72,5 +82,37 @@ export class ChatController {
   @ApiOperation({ summary: 'Close a conversation (for admin)' })
   closeConversation(@Param('id') id: string) {
     return this.chatService.closeConversation(id);
+  }
+
+  @Post('upload')
+  // @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth()
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  async uploadChatFile(
+    @UploadedFile() file: Express.Multer.File,
+    // @Request() req,
+  ) {
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+
+    // ✅ Sử dụng CloudinaryService đã có
+    const uploadResult = await this.cloudinaryService.uploadImage(file);
+
+    return {
+      url: uploadResult.secure_url,
+      fileName: file.originalname,
+      fileSize: file.size,
+      type: file.mimetype.startsWith('image') ? 'image' : 'file',
+    };
   }
 }

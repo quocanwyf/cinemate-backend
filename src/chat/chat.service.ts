@@ -1,8 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return */
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
-/* eslint-disable @typescript-eslint/no-unsafe-call */
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-// src/chat/chat.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { ConversationStatus } from '@prisma/client';
@@ -14,11 +9,9 @@ export class ChatService {
   // === LOGIC CHO USER ===
 
   async findOrCreateConversationForUser(userId: string) {
-    // Dùng `upsert` để tìm hoặc tạo mới cuộc trò chuyện cho user
     const conversation = await this.prisma.conversation.upsert({
       where: { userId: userId },
       update: {
-        // Nếu cuộc trò chuyện đã bị đóng, mở lại nó
         status: ConversationStatus.OPEN,
       },
       create: {
@@ -27,6 +20,22 @@ export class ChatService {
       include: {
         messages: {
           orderBy: { createdAt: 'asc' },
+          take: 100,
+          include: {
+            user: {
+              select: {
+                id: true,
+                display_name: true,
+                avatar_url: true,
+              },
+            },
+            admin: {
+              select: {
+                id: true,
+                full_name: true,
+              },
+            },
+          },
         },
       },
     });
@@ -35,15 +44,35 @@ export class ChatService {
 
   // === LOGIC CHO ADMIN ===
 
-  // eslint-disable-next-line @typescript-eslint/require-await
   async getAdminConversations(status: ConversationStatus) {
     return this.prisma.conversation.findMany({
       where: { status: status },
       include: {
         user: {
           select: {
+            id: true, // ✅ Thêm id
             display_name: true,
             avatar_url: true,
+          },
+        },
+        messages: {
+          // ✅ Thêm messages
+          orderBy: { createdAt: 'asc' },
+          take: 100,
+          include: {
+            user: {
+              select: {
+                id: true,
+                display_name: true,
+                avatar_url: true,
+              },
+            },
+            admin: {
+              select: {
+                id: true,
+                full_name: true,
+              },
+            },
           },
         },
       },
@@ -59,6 +88,21 @@ export class ChatService {
       include: {
         messages: {
           orderBy: { createdAt: 'asc' },
+          include: {
+            user: {
+              select: {
+                id: true,
+                display_name: true,
+                avatar_url: true,
+              },
+            },
+            admin: {
+              select: {
+                id: true,
+                full_name: true,
+              },
+            },
+          },
         },
       },
     });
@@ -71,7 +115,6 @@ export class ChatService {
     return conversation.messages;
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
   async closeConversation(conversationId: string) {
     return this.prisma.conversation.update({
       where: { id: conversationId },
