@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import {
@@ -12,6 +13,7 @@ import { Prisma } from '@prisma/client';
 import { CreateFeaturedListDto } from './dto/create-featured-list.dto';
 import { UpdateFeaturedListDto } from './dto/update-featured-list.dto';
 import { MoviesService } from 'src/movies/movies.service';
+import { GetCommentsQueryDto } from './dto/get-comments-query.dto';
 
 @Injectable()
 export class AdminService {
@@ -390,43 +392,84 @@ export class AdminService {
   // === COMMENT MODERATION SECTION ======
   // =====================================
 
-  async getComments(paginationQueryDto: PaginationQueryDto) {
-    const { page, limit, search } = paginationQueryDto;
-
-    if (page === undefined || limit === undefined) {
-      throw new BadRequestException('Page and limit parameters are required.');
-    }
-    if (page < 1 || limit < 1) {
-      throw new BadRequestException(
-        'Page and limit must be positive integers.',
-      );
-    }
+  async getComments(queryDto: GetCommentsQueryDto) {
+    const {
+      page = 1,
+      limit = 20,
+      search,
+      movieId,
+      userId,
+      startDate,
+      endDate,
+    } = queryDto;
 
     const skip = (page - 1) * limit;
 
-    const whereClause: Prisma.CommentWhereInput = {
-      is_deleted: false,
-      ...(search && {
-        content: { contains: search, mode: Prisma.QueryMode.insensitive },
-      }),
+    // ✅ Build WHERE clause dynamically
+    const where: any = {
+      is_deleted: false, // Chỉ lấy comments chưa bị xóa
     };
 
-    const [comments, total] = await this.prisma.$transaction([
+    // ✅ Filter: Search by content
+    if (search) {
+      where.content = {
+        contains: search,
+        mode: 'insensitive', // Case-insensitive search
+      };
+    }
+
+    // ✅ Filter: By movieId
+    if (movieId) {
+      where.movieId = movieId;
+    }
+
+    // ✅ Filter: By userId
+    if (userId) {
+      where.userId = userId;
+    }
+
+    // ✅ Filter: By date range
+    if (startDate || endDate) {
+      where.createdAt = {};
+
+      if (startDate) {
+        where.createdAt.gte = new Date(startDate);
+      }
+
+      if (endDate) {
+        // Set to end of day
+        const endDateTime = new Date(endDate);
+        endDateTime.setHours(23, 59, 59, 999);
+        where.createdAt.lte = endDateTime;
+      }
+    }
+
+    // ✅ Execute queries in parallel
+    const [comments, total] = await Promise.all([
       this.prisma.comment.findMany({
-        where: whereClause,
+        where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: 'desc' }, // Newest first
         include: {
           user: {
-            select: { id: true, display_name: true, email: true },
+            select: {
+              id: true,
+              display_name: true,
+              email: true,
+              avatar_url: true,
+            },
           },
           movie: {
-            select: { id: true, title: true },
+            select: {
+              id: true,
+              title: true,
+              poster_path: true,
+            },
           },
         },
       }),
-      this.prisma.comment.count({ where: whereClause }),
+      this.prisma.comment.count({ where }),
     ]);
 
     return {

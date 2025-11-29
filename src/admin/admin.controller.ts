@@ -23,6 +23,7 @@ import {
   ApiOperation,
   ApiResponse,
   ApiTags,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { AuthService } from 'src/auth/auth.service';
@@ -34,6 +35,7 @@ import { CreateFeaturedListDto } from './dto/create-featured-list.dto';
 import { UpdateFeaturedListDto } from './dto/update-featured-list.dto';
 import { AdminResponseDto } from './dto/admin-response.dto';
 import { AdminRefreshGuard } from 'src/auth/admin-refresh.guard';
+import { GetCommentsQueryDto } from './dto/get-comments-query.dto'; // ✅ Import DTO
 
 @ApiTags('admin')
 @Controller('admin')
@@ -170,9 +172,62 @@ export class AdminController {
   @UseGuards(AdminGuard)
   @ApiBearerAuth()
   @Get('comments')
-  @ApiOperation({ summary: 'Get a paginated list of comments for moderation' })
-  getComments(@Query() paginationQueryDto: PaginationQueryDto) {
-    return this.adminService.getComments(paginationQueryDto);
+  @ApiOperation({
+    summary: 'Get all comments with filters (Admin only)',
+    description:
+      'Retrieve paginated comments with optional filters by movie, user, date range, and search',
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    type: Number,
+    example: 1,
+    description: 'Page number (default: 1)',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    example: 20,
+    description: 'Items per page (default: 20)',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    example: 'great movie',
+    description: 'Search in comment content',
+  })
+  @ApiQuery({
+    name: 'movieId',
+    required: false,
+    type: String,
+    example: 'cm123abc',
+    description: 'Filter by movie ID',
+  })
+  @ApiQuery({
+    name: 'userId',
+    required: false,
+    type: String,
+    example: 'user_123',
+    description: 'Filter by user ID',
+  })
+  @ApiQuery({
+    name: 'startDate',
+    required: false,
+    type: String,
+    example: '2025-01-01T00:00:00Z',
+    description: 'Filter from date (ISO 8601)',
+  })
+  @ApiQuery({
+    name: 'endDate',
+    required: false,
+    type: String,
+    example: '2025-12-31T23:59:59Z',
+    description: 'Filter to date (ISO 8601)',
+  })
+  async getComments(@Query() queryDto: GetCommentsQueryDto) {
+    return this.adminService.getComments(queryDto);
   }
 
   @UseGuards(AdminGuard)
