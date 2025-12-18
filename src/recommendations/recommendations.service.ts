@@ -45,9 +45,12 @@ export class RecommendationsService {
       return this.moviesService.getPopularMovies();
     }
 
+    const candidateIds = unseenMovieIds.slice(0, 450);
+
     // BƯỚC 3: CHẠY SONG SONG CÁC HỆ THỐNG GỢI Ý
     const [svdRecs, cbfRecs] = await Promise.all([
-      this.getSvdRecommendations(userId, unseenMovieIds),
+      // Thay unseenMovieIds bằng candidateIds
+      this.getSvdRecommendations(userId, candidateIds),
       this.getContentBasedRecommendations(favoriteMovieIds),
     ]);
 
