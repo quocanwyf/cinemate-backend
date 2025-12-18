@@ -199,7 +199,6 @@ export class RecommendationsService {
 
     const allMoviesInDb = await this.prisma.movie.findMany({
       select: { id: true },
-      orderBy: { popularity: 'desc' },
     });
     const unseenMovieIds = allMoviesInDb
       .map((m) => m.id)
