@@ -1,4 +1,3 @@
-/* eslint-disable prettier/prettier */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Injectable, Logger } from '@nestjs/common';
@@ -92,7 +91,7 @@ export class RecommendationsService {
     if (movieIds.length === 0) return [];
     try {
       const response = await firstValueFrom(
-        this.httpService.post(`${this.aiServiceUrl}/recommend/svd`, {
+        this.httpService.post(`${this.aiServiceUrl}/recommend/svd/batch`, {
           user_id: userId,
           movie_ids: movieIds,
         }),
