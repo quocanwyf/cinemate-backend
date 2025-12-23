@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { Movie } from '@prisma/client';
 import { MovieDetailDto } from './dto/movie-detail.dto';
 import { ShareLinksDto } from './dto/share-response.dto';
+import { SearchMovieDto } from './dto/search-movie.dto';
 
 @Injectable()
 export class MoviesService {
@@ -74,6 +75,98 @@ export class MoviesService {
       release_date: movie.release_date,
       vote_average: movie.vote_average ? movie.vote_average / 2 : null,
     }));
+  }
+
+  async searchWithFilters(dto: SearchMovieDto) {
+    const {
+      query,
+      genreIds,
+      minRating,
+      maxRating,
+      minYear,
+      maxYear,
+      hasTrailer,
+      sort = 'popularity',
+      order = 'desc',
+      page = 1,
+      limit = 20,
+    } = dto;
+
+    const where: any = {};
+
+    // Full-text-like title/overview contains
+    if (query) {
+      where.OR = [
+        { title: { contains: query, mode: 'insensitive' } },
+        { overview: { contains: query, mode: 'insensitive' } },
+      ];
+    }
+
+    // Genre relation filter (at least one of genres)
+    if (genreIds && genreIds.length > 0) {
+      where.genres = { some: { genreId: { in: genreIds } } };
+    }
+
+    // Ratings (DB uses vote_average)
+    if (minRating !== undefined || maxRating !== undefined) {
+      where.vote_average = {};
+      if (minRating !== undefined) where.vote_average.gte = minRating * 2;
+      if (maxRating !== undefined) where.vote_average.lte = maxRating * 2;
+    }
+
+    // Year -> release_date range filter
+    if (minYear || maxYear) {
+      where.release_date = {};
+      if (minYear) where.release_date.gte = new Date(`${minYear}-01-01`);
+      if (maxYear) where.release_date.lte = new Date(`${maxYear}-12-31`);
+    }
+
+    // Trailer existence
+    if (hasTrailer === true) where.trailer_key = { not: null };
+    if (hasTrailer === false) where.trailer_key = null;
+
+    // Map sort param to actual DB column
+    const sortMap: Record<string, string> = {
+      popularity: 'popularity',
+      rating: 'vote_average',
+      release_date: 'release_date',
+      title: 'title',
+    };
+    const orderBy = { [sortMap[sort] || 'popularity']: order };
+
+    // Pagination
+    const take = Math.min(limit || 20, 100);
+    const skip = (Math.max(page || 1, 1) - 1) * take;
+
+    // Count + fetch
+    const [total, items] = await Promise.all([
+      this.prisma.movie.count({ where }),
+      this.prisma.movie.findMany({
+        where,
+        orderBy,
+        skip,
+        take,
+        // select only fields you want to return to client (or include relations)
+        select: {
+          id: true,
+          title: true,
+          poster_path: true,
+          backdrop_path: true,
+          vote_average: true,
+          release_date: true,
+        },
+      }),
+    ]);
+
+    const totalPages = Math.ceil(total / take);
+
+    // Optionally normalize vote_average to 0-5 for frontend (if you used 0-10 scale)
+    const normalizedItems = items.map((m) => ({
+      ...m,
+      vote_average: m.vote_average ? m.vote_average / 2 : null,
+    }));
+
+    return { items: normalizedItems, total, page, limit: take, totalPages };
   }
 
   async getShareLinks(

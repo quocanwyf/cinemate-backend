@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
@@ -52,14 +54,10 @@ export class MoviesController {
   }
 
   @Get('search')
-  @ApiOperation({ summary: 'Search for movies by title' })
-  @ApiOkResponse({
-    description: 'Returns a list of movies matching the search query.',
-    // Chúng ta có thể tạo một DTO riêng cho kết quả search nếu muốn
-    type: [MovieDto],
-  })
-  searchMovies(@Query() searchMovieDto: SearchMovieDto) {
-    return this.moviesService.searchMovies(searchMovieDto.query);
+  @ApiOperation({ summary: 'Search for movies with optional filters' })
+  @ApiOkResponse({ description: 'Results with pagination' })
+  async searchMovies(@Query() dto: SearchMovieDto) {
+    return this.moviesService.searchWithFilters(dto);
   }
 
   @Get('random')
