@@ -24,7 +24,7 @@ export class SearchMovieDto {
   })
   @IsOptional()
   @IsString()
-  query: string;
+  query?: string;
 
   @ApiPropertyOptional({
     description: 'Comma-separated genre IDs or repeated param',
