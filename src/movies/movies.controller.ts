@@ -23,6 +23,7 @@ import { SearchMovieDto } from './dto/search-movie.dto';
 import { MovieDetailDto } from './dto/movie-detail.dto';
 import { Query } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport/dist/auth.guard';
+import { ShareLinksDto } from './dto/share-response.dto';
 
 @ApiTags('movies') // Nhóm các API này dưới tag "movies"
 @Controller('movies')
@@ -106,5 +107,13 @@ export class MoviesController {
     const userId = req?.user?.id || null;
     console.log('Authenticated user IDdddddddddddddddddđ:', userId);
     return this.moviesService.getMovieById(id, userId);
+  }
+
+  @Get(':id/share')
+  @ApiOperation({ summary: 'Get shareable links for a movie (YouTube + URLs)' })
+  @ApiOkResponse({ type: ShareLinksDto })
+  async getShareLinks(@Param('id', ParseIntPipe) id: number) {
+    const origin = process.env.PUBLIC_APP_URL || undefined;
+    return this.moviesService.getShareLinks(id, origin);
   }
 }

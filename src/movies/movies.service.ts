@@ -9,6 +9,7 @@ import { firstValueFrom } from 'rxjs';
 import { ConfigService } from '@nestjs/config';
 import { Movie } from '@prisma/client';
 import { MovieDetailDto } from './dto/movie-detail.dto';
+import { ShareLinksDto } from './dto/share-response.dto';
 
 @Injectable()
 export class MoviesService {
@@ -73,6 +74,54 @@ export class MoviesService {
       release_date: movie.release_date,
       vote_average: movie.vote_average ? movie.vote_average / 2 : null,
     }));
+  }
+
+  async getShareLinks(
+    movieId: number,
+    origin?: string,
+  ): Promise<ShareLinksDto> {
+    // select only needed fields from DB
+    const movie = await this.prisma.movie.findUnique({
+      where: { id: movieId },
+      select: {
+        id: true,
+        title: true,
+        trailer_key: true,
+      },
+    });
+
+    if (!movie) {
+      throw new NotFoundException(`Movie with id ${movieId} not found`);
+    }
+    const trailerKey = movie.trailer_key ?? null;
+    const youtubeUrl = trailerKey
+      ? `https://www.youtube.com/watch?v=${trailerKey}`
+      : null;
+    const youtubeShortUrl = trailerKey
+      ? `https://youtu.be/${trailerKey}`
+      : null;
+    const embedUrl = trailerKey
+      ? `https://www.youtube.com/embed/${trailerKey}`
+      : null;
+
+    const base = (
+      origin ||
+      process.env.PUBLIC_APP_URL ||
+      'https://cinemate.app'
+    ).replace(/\/$/, '');
+    // add simple UTM for tracking
+    const movieUrl = `${base}/movies/${movie.id}?utm_source=share&utm_medium=link&utm_campaign=share_trailer`;
+    const tweetText = trailerKey
+      ? `${movie.title} — watch the trailer: ${youtubeShortUrl} ${movieUrl}`
+      : `${movie.title} — ${movieUrl}`;
+
+    return {
+      youtubeUrl,
+      youtubeShortUrl,
+      embedUrl,
+      movieUrl,
+      tweetText,
+    };
   }
 
   async getMovieById(
