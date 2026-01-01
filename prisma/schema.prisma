@@ -33,6 +33,8 @@ model User {
   ViewHistory         ViewHistory[]
   conversation        Conversation?
   messages            Message[]
+  DeviceToken         DeviceToken[]
+  Notification        Notification[]
 }
 
 model Admin {
@@ -287,4 +289,47 @@ model Message {
 enum SenderType {
   USER // Tin nhắn từ mobile user
   ADMIN // Tin nhắn từ web admin
+}
+
+// Notification types (add near your enums)
+enum NotificationType {
+  COMMENT_REPLY
+  MENTION
+}
+
+// Device tokens for mobile push
+model DeviceToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  platform  String // 'android' | 'ios' | 'web'
+  is_active Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Notifications table
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  actorId   String? // who triggered the notification (user id)
+  sourceId  String? // e.g., commentId
+  movieId   Int?
+  title     String
+  body      String?          @db.Text
+  data      Json? // deeplink, small metadata (ex: { deeplink: "...", commentId: "..." })
+  is_read   Boolean          @default(false)
+  is_sent   Boolean          @default(false)
+  sent_at   DateTime?
+  createdAt DateTime         @default(now())
+  expire_at DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, is_read, createdAt])
 }

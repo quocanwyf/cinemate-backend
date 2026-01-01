@@ -17,6 +17,8 @@ import { TrackingModule } from './tracking/tracking.module';
 import { MailModule } from './mail/mail.module';
 import { AdminModule } from './admin/admin.module';
 import { ChatModule } from './chat/chat.module';
+import { DevicesModule } from './devices/devices.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -40,6 +42,8 @@ import { ChatModule } from './chat/chat.module';
     MailModule,
     AdminModule,
     ChatModule,
+    DevicesModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [
