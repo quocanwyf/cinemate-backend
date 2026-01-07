@@ -94,38 +94,29 @@ export class MoviesService {
 
     const where: any = {};
 
-    // Full-text-like title/overview contains
+    // ... (Giữ nguyên phần logic tạo object 'where')
     if (query) {
       where.OR = [
         { title: { contains: query, mode: 'insensitive' } },
         { overview: { contains: query, mode: 'insensitive' } },
       ];
     }
-
-    // Genre relation filter (at least one of genres)
     if (genreIds && genreIds.length > 0) {
       where.genres = { some: { genreId: { in: genreIds } } };
     }
-
-    // Ratings (DB uses vote_average)
     if (minRating !== undefined || maxRating !== undefined) {
       where.vote_average = {};
       if (minRating !== undefined) where.vote_average.gte = minRating * 2;
       if (maxRating !== undefined) where.vote_average.lte = maxRating * 2;
     }
-
-    // Year -> release_date range filter
     if (minYear || maxYear) {
       where.release_date = {};
       if (minYear) where.release_date.gte = new Date(`${minYear}-01-01`);
       if (maxYear) where.release_date.lte = new Date(`${maxYear}-12-31`);
     }
-
-    // Trailer existence
     if (hasTrailer === true) where.trailer_key = { not: null };
     if (hasTrailer === false) where.trailer_key = null;
 
-    // Map sort param to actual DB column
     const sortMap: Record<string, string> = {
       popularity: 'popularity',
       rating: 'vote_average',
@@ -134,11 +125,10 @@ export class MoviesService {
     };
     const orderBy = { [sortMap[sort] || 'popularity']: order };
 
-    // Pagination
     const take = Math.min(limit || 20, 100);
     const skip = (Math.max(page || 1, 1) - 1) * take;
 
-    // Count + fetch
+    // 1. Fetch dữ liệu từ DB
     const [total, items] = await Promise.all([
       this.prisma.movie.count({ where }),
       this.prisma.movie.findMany({
@@ -146,7 +136,7 @@ export class MoviesService {
         orderBy,
         skip,
         take,
-        // select only fields you want to return to client (or include relations)
+        // LƯU Ý quan trọng: Cần lấy thêm 'popularity' để hàm enrichAndReturnMovies kiểm tra được
         select: {
           id: true,
           title: true,
@@ -154,15 +144,25 @@ export class MoviesService {
           backdrop_path: true,
           vote_average: true,
           release_date: true,
+          popularity: true, // Thêm dòng này
         },
       }),
     ]);
 
+    // 2. GỌI ENRICH DATA: Thấy thiếu poster/popularity là gọi TMDB ngay
+    // Ép kiểu 'as any' vì enrichAndReturnMovies nhận vào mảng Movie đầy đủ,
+    // nhưng ở đây chúng ta chỉ lấy một vài trường.
+    const enrichedItems = await this.enrichAndReturnMovies(items as any);
+
     const totalPages = Math.ceil(total / take);
 
-    // Optionally normalize vote_average to 0-5 for frontend (if you used 0-10 scale)
-    const normalizedItems = items.map((m) => ({
-      ...m,
+    // 3. Chuẩn hóa dữ liệu trả về cho Frontend
+    const normalizedItems = enrichedItems.map((m) => ({
+      id: m.id,
+      title: m.title,
+      poster_path: m.poster_path,
+      backdrop_path: m.backdrop_path,
+      release_date: m.release_date,
       vote_average: m.vote_average ? m.vote_average / 2 : null,
     }));
 
