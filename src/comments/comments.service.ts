@@ -8,14 +8,21 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { NotificationsHelper } from 'src/notifications/notifications.helper';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
 
 @Injectable()
 export class CommentsService {
-  constructor(private prisma: PrismaService) {}
+  private logger = new Logger(CommentsService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private notificationsHelper: NotificationsHelper,
+  ) {}
 
   // Lấy tất cả bình luận của một phim (dạng cây)
   //  method getCommentsByMovie hiện tại
@@ -203,6 +210,21 @@ export class CommentsService {
         },
       },
     });
+
+    // Trigger notification nếu là reply comment
+    if (parentCommentId && newComment.id) {
+      try {
+        await this.notificationsHelper.notifyCommentReply(
+          parentCommentId,
+          newComment.id,
+          userId,
+          movieId,
+        );
+      } catch (error) {
+        this.logger.warn(`Failed to send notification: ${error.message}`);
+        // Không throw - comment vẫn được tạo
+      }
+    }
 
     return newComment;
   }

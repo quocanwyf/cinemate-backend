@@ -19,6 +19,8 @@ import { AdminModule } from './admin/admin.module';
 import { ChatModule } from './chat/chat.module';
 import { DevicesModule } from './devices/devices.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { FcmService } from './fcm/fcm.service';
+import { FcmModule } from './fcm/fcm.module';
 
 @Module({
   imports: [
@@ -44,6 +46,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     ChatModule,
     DevicesModule,
     NotificationsModule,
+    FcmModule,
   ],
   controllers: [AppController],
   providers: [
@@ -52,6 +55,7 @@ import { NotificationsModule } from './notifications/notifications.module';
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
+    FcmService,
   ],
 })
 export class AppModule {}
