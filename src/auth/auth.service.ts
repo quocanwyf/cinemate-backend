@@ -204,7 +204,7 @@ export class AuthService {
         where: { token_hash: hashedToken },
       });
 
-      if (!resetToken || resetToken.expires_at < new Date())
+      if (!resetToken || new Date() > resetToken.expires_at)
         throw new UnauthorizedException('Invalid or expired token');
 
       const hashedPassword = await bcrypt.hash(newPassword, this.SALT_ROUNDS);
